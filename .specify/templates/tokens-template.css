@@ -2,47 +2,62 @@
 
 @layer tokens {
   :root {
-    /* 1. Fluid Typography Scale (Single Source of Truth via clamp) */
-    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+    /* 1. Fluid Typography Scale & Tabular Numerals (Single Source of Truth) */
+    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
 
-    --font-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.8125rem);   /* 12px - 13px */
-    --font-sm: clamp(0.875rem, 0.825rem + 0.25vw, 0.9375rem); /* 14px - 15px */
-    --font-base: clamp(1rem, 0.95rem + 0.25vw, 1.0625rem);    /* 16px - 17px */
+    --font-xs: clamp(0.75rem, 0.72rem + 0.15vw, 0.8125rem);   /* 12px - 13px */
+    --font-sm: clamp(0.84375rem, 0.8rem + 0.2vw, 0.90625rem); /* 13.5px - 14.5px */
+    --font-base: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0rem);    /* 15px - 16px */
     --font-lg: clamp(1.125rem, 1.05rem + 0.35vw, 1.25rem);    /* 18px - 20px */
     --font-xl: clamp(1.375rem, 1.25rem + 0.5vw, 1.625rem);    /* 22px - 26px */
     --font-2xl: clamp(1.75rem, 1.5rem + 1vw, 2.25rem);        /* 28px - 36px */
 
-    /* 2. Spacing, Geometry & Interactive Hit Targets */
+    /* 2. Spatial Rhythm, Geometry & Hit Targets */
     --space-1: 0.25rem;
     --space-2: 0.5rem;
     --space-3: 0.75rem;
     --space-4: 1.0rem;
+    --space-5: 1.25rem;
     --space-6: 1.5rem;
     --space-8: 2.0rem;
 
-    --header-height: 4.0rem;
-    --drawer-width: 440px;
-    --max-content-width: 1280px;
+    --header-height: 3.75rem;
+    --drawer-width: 420px;
+    --max-content-width: 1200px;
     --touch-target-min: 44px;
 
-    --radius-sm: 0.375rem;
+    --radius-sm: 0.5rem;
     --radius-md: 0.75rem;
     --radius-lg: 1.0rem;
+    --radius-pill: 9999px;
 
-    /* 3. Perceptually Uniform Contrast Palette (OKLCH — WCAG 2.2 AA >= 4.5:1) */
-    --color-bg-root: oklch(0.12 0.02 260);
-    --color-bg-surface: oklch(0.18 0.03 260);
-    --color-bg-elevated: oklch(0.24 0.04 260);
-    --color-text-main: oklch(0.98 0.01 260);
-    --color-text-muted: oklch(0.76 0.02 260);
-    --color-border: oklch(0.28 0.03 260);
-    --color-primary: oklch(0.78 0.16 195);
-    --color-accent: oklch(0.72 0.19 145);
-    --color-warning: oklch(0.80 0.16 80);
-    --color-danger: oklch(0.65 0.20 25);
+    /* 3. Studio-Grade OKLCH Surface & Contrast Palette (WCAG 2.2 AA >= 4.5:1) */
+    --color-bg-root: oklch(0.13 0.015 265);
+    --color-bg-surface: oklch(0.17 0.018 265);
+    --color-bg-elevated: oklch(0.22 0.022 265);
+    --color-bg-glass: oklch(0.17 0.018 265 / 0.78);
 
-    /* 4. Z-Index Hierarchy (Prefer native <dialog> & popover Top-Layer first) */
+    --color-text-main: oklch(0.97 0.008 265);
+    --color-text-muted: oklch(0.74 0.018 265);
+
+    --color-border: oklch(0.98 0.01 265 / 0.09);
+    --color-border-strong: oklch(0.98 0.01 265 / 0.16);
+
+    --color-primary: oklch(0.76 0.15 200);
+    --color-primary-soft: oklch(0.76 0.15 200 / 0.14);
+    --color-accent: oklch(0.74 0.17 150);
+    --color-accent-soft: oklch(0.74 0.17 150 / 0.14);
+    --color-warning: oklch(0.82 0.15 80);
+    --color-danger: oklch(0.66 0.20 25);
+    --color-danger-soft: oklch(0.66 0.20 25 / 0.14);
+
+    /* 4. Elevation, Specular Highlights & Motion Physics */
+    --shadow-card: 0 1px 0 0 oklch(1 0 0 / 0.05) inset, 0 8px 24px -6px oklch(0 0 0 / 0.45);
+    --shadow-float: 0 1px 0 0 oklch(1 0 0 / 0.08) inset, 0 20px 40px -12px oklch(0 0 0 / 0.65);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* 5. Z-Index Hierarchy (Prefer native <dialog> & popover Top-Layer first) */
     --z-sticky: 30;
     --z-drawer: 40;
     --z-popover: 50;
@@ -58,10 +73,12 @@
     margin: 0;
     padding: 0;
     background-color: var(--color-bg-root);
+    background-image: radial-gradient(ellipse 80% 50% at 50% -20%, var(--color-primary-soft), transparent);
     color: var(--color-text-main);
     font-family: var(--font-sans);
     font-size: var(--font-base);
-    line-height: 1.5;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
     overflow-x: clip;
   }
 
@@ -78,14 +95,16 @@
   dialog {
     background-color: var(--color-bg-surface);
     color: var(--color-text-main);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-float);
     padding: var(--space-6);
-    max-width: min(92vw, 640px);
+    max-width: min(92vw, 560px);
+    width: 100%;
   }
 
   dialog::backdrop {
-    background: oklch(0.05 0.01 260 / 0.72);
-    backdrop-filter: blur(4px);
+    background: oklch(0.06 0.01 265 / 0.72);
+    backdrop-filter: blur(6px);
   }
 }

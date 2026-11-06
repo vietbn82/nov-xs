@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Automated 4-Point Definition of Done (DoD) & Token Purity Auditor (Nov-XS)
+# Automated 4-Point Definition of Done (DoD), Anti-Monolith & Token Purity Auditor (Nov-XS)
 [CmdletBinding()]
 param(
     [string]$TargetRoot = '',
@@ -16,14 +16,31 @@ $repoRoot = if ($TargetRoot) {
 
 $violations = [System.Collections.Generic.List[string]]::new()
 
-# 1. Scan wwwroot/ (excluding tokens.css) for hardcoded hex colors, px font sizes, and raw z-index
+# 1. Scan wwwroot/ for Anti-Monolith ceilings, Slice Isolation, Token Purity & Top-Layer Hygiene
 $webFiles = Get-ChildItem -Path (Join-Path $repoRoot 'src') -Recurse -File -Include *.css, *.html, *.js -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne 'tokens.css' -and $_.FullName -like '*wwwroot*' }
+    Where-Object { $_.FullName -like '*wwwroot*' }
 
 foreach ($file in $webFiles) {
     $lines = Get-Content -LiteralPath $file.FullName
+
+    # Anti-Monolith File Ceiling Checks
+    if ($file.Name -eq 'index.html' -and $lines.Count -gt 150) {
+        $violations.Add("Anti-Monolith Violation: index.html has $($lines.Count) lines (max 150). Extract feature UI into <slice-*> Web Components.")
+    }
+    if ($file.Extension -in @('.js', '.css') -and $lines.Count -gt 300) {
+        $violations.Add("Anti-Monolith Violation: $($file.Name) has $($lines.Count) lines (max 300). Split into isolated Web Components.")
+    }
+
+    if ($file.Name -eq 'tokens.css') { continue }
+
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
+
+        # Slice Isolation Check: forbid document.getElementById inside slice-* components
+        if ($file.Name -like 'slice-*.js' -and $line -match 'document\.(getElementById|querySelector)') {
+            $violations.Add("Slice Isolation Violation in $($file.Name):$($i + 1) -> Use scoped this.querySelector() instead of global document queries.")
+        }
+
         if ($line -match '#[0-9a-fA-F]{3,8}\b' -and $line -notmatch '^\s*(//|/\*|\*)') {
             $violations.Add("Token Violation (Hex Color) in $($file.Name):$($i + 1) -> $($line.Trim())")
         }
@@ -32,6 +49,9 @@ foreach ($file in $webFiles) {
         }
         if ($line -match 'z-index\s*:\s*\d+' -and $line -notmatch 'var\(--z-') {
             $violations.Add("Top-Layer Violation (Hardcoded z-index) in $($file.Name):$($i + 1) -> $($line.Trim())")
+        }
+        if ($file.Extension -eq '.css' -and $line -match 'transition\s*:[^;]*max-height') {
+            $violations.Add("Layout Jank Violation (max-height transition) in $($file.Name):$($i + 1) -> Use .collapsible grid-template-rows: 0fr/1fr instead.")
         }
     }
 }
@@ -68,7 +88,7 @@ if ($Json) {
     } | ConvertTo-Json -Compress
 } else {
     if ($passed) {
-        Write-Output "✅ DoD Gate Audit PASSED (0 token/z-index/secret violations; tests green)."
+        Write-Output "✅ DoD Gate Audit PASSED (0 monolith/isolation/token/z-index/secret violations; tests green)."
     } else {
         Write-Output "❌ DoD Gate Audit FAILED ($($violations.Count) violation(s)):"
         foreach ($v in $violations) {

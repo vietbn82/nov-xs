@@ -1,0 +1,89 @@
+// Isolated Vertical Slice Web Component Template
+// Enforces 4-state completeness (Loading, Empty, Populated, Error) and scoped this.querySelector() isolation.
+
+class Slice__SLICE_NAME__ extends HTMLElement {
+  connectedCallback() {
+    if (this.hasAttribute('rendered')) return;
+    this.setAttribute('rendered', 'true');
+
+    this.apiBase = '/api/__ROUTE_SLUG__';
+    this.renderShell();
+    this.bindEvents();
+    this.loadItems();
+  }
+
+  renderShell() {
+    this.innerHTML = `
+      <section class="card l-stack" aria-labelledby="heading-__ROUTE_SLUG__">
+        <div class="card__header">
+          <h2 id="heading-__ROUTE_SLUG__" class="card__title">__SLICE_NAME__</h2>
+          <span class="badge" data-role="count">0</span>
+        </div>
+        <p class="card__subtitle">__SLICE_DESCRIPTION__</p>
+        <form data-role="form" class="input-group">
+          <input data-role="input" class="input-field" type="text" placeholder="Add new __ROUTE_SLUG__ item..." required aria-label="New __SLICE_NAME__ title" />
+          <button type="submit" class="btn">Add</button>
+        </form>
+        <ul data-role="list" class="item-list" aria-live="polite">
+          <li class="skeleton" aria-hidden="true"></li>
+        </ul>
+      </section>
+    `;
+  }
+
+  bindEvents() {
+    const form = this.querySelector('[data-role="form"]');
+    const input = this.querySelector('[data-role="input"]');
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = input?.value?.trim();
+      if (!title) return;
+      const res = await fetch(this.apiBase, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+      });
+      if (res.ok) {
+        input.value = '';
+        window.AppToast?.show({ title: `Added to __SLICE_NAME__`, variant: 'success' });
+        await this.loadItems();
+      }
+    });
+  }
+
+  async loadItems() {
+    const listEl = this.querySelector('[data-role="list"]');
+    const countEl = this.querySelector('[data-role="count"]');
+    if (!listEl) return;
+
+    try {
+      const res = await fetch(this.apiBase);
+      if (!res.ok) throw new Error('Failed to load');
+      const items = await res.json();
+      if (countEl) countEl.textContent = String(items.length);
+
+      if (items.length === 0) {
+        listEl.innerHTML = '<li class="empty-state">No items yet. Add your first one above.</li>';
+        return;
+      }
+
+      listEl.innerHTML = items
+        .map((item) => '<li class="item-row"><span>' + this.escapeHtml(item.title) + '</span><span class="badge">Active</span></li>')
+        .join('');
+    } catch {
+      listEl.innerHTML = '<li class="empty-state">Offline or unable to load items.</li>';
+    }
+  }
+
+  escapeHtml(str) {
+    return String(str)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+}
+
+if (!customElements.get('slice-__ROUTE_SLUG__')) {
+  customElements.define('slice-__ROUTE_SLUG__', Slice__SLICE_NAME__);
+}

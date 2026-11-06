@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Scaffolds a complete Lean SpecKit Vertical Slice (specs/###-<slice> + Features/<Slice> + Program.cs wiring + xUnit Tests)
+# Scaffolds a complete Lean SpecKit Vertical Slice (specs/###-<slice> + Features/<Slice> + Isolated <slice-*> Web Component + Program.cs wiring + xUnit Tests)
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$SliceName,
@@ -136,7 +136,34 @@ public static class ${SliceName}Endpoints
             [System.IO.File]::WriteAllText($endpointsPath, $endpointsCode, $utf8NoBom)
         }
 
-        # Auto-register slice in Program.cs if Program.cs exists and doesn't already wire it
+        # 3. Scaffold Isolated Native Web Component (wwwroot/components/slice-<routeSlug>.js)
+        $compDir = Join-Path $projectDir 'wwwroot/components'
+        $sliceTplPath = Join-Path $repoRoot '.specify/templates/web/slice-component.js.template'
+        if ((Test-Path -LiteralPath $compDir -PathType Container) -and (Test-Path -LiteralPath $sliceTplPath -PathType Leaf)) {
+            $compFile = Join-Path $compDir "slice-$routeSlug.js"
+            if (-not (Test-Path -LiteralPath $compFile -PathType Leaf)) {
+                $compJs = [System.IO.File]::ReadAllText($sliceTplPath, [System.Text.Encoding]::UTF8)
+                $compJs = $compJs.Replace('__SLICE_NAME__', $SliceName).Replace('__ROUTE_SLUG__', $routeSlug).Replace('__SLICE_DESCRIPTION__', $Description)
+                [System.IO.File]::WriteAllText($compFile, $compJs, $utf8NoBom)
+            }
+
+            # Mount <slice-*> tag and script import into index.html if not already present
+            $indexPath = Join-Path $projectDir 'wwwroot/index.html'
+            if (Test-Path -LiteralPath $indexPath -PathType Leaf) {
+                $indexRaw = [System.IO.File]::ReadAllText($indexPath, [System.Text.Encoding]::UTF8)
+                $scriptTag = "<script type=`"module`" src=`"/components/slice-$routeSlug.js`"></script>"
+                $elementTag = "<slice-$routeSlug></slice-$routeSlug>"
+                if ($indexRaw -notmatch "slice-$routeSlug\.js") {
+                    $indexRaw = $indexRaw.Replace('</head>', "  $scriptTag`n</head>")
+                }
+                if ($indexRaw -notmatch "<slice-$routeSlug>") {
+                    $indexRaw = $indexRaw.Replace('</main>', "    $elementTag`n  </main>")
+                }
+                [System.IO.File]::WriteAllText($indexPath, $indexRaw, $utf8NoBom)
+            }
+        }
+
+        # 4. Auto-register slice in Program.cs if Program.cs exists and doesn't already wire it
         $programPath = Join-Path $projectDir 'Program.cs'
         if (Test-Path -LiteralPath $programPath -PathType Leaf) {
             $progRaw = [System.IO.File]::ReadAllText($programPath, [System.Text.Encoding]::UTF8)
@@ -156,6 +183,7 @@ var app = builder.Build();
             }
         }
 
+        # 5. Scaffold xUnit + FluentAssertions Test Suite
         $testDir = Join-Path $repoRoot "tests/$ProjectName.Tests/Features"
         if (Test-Path -LiteralPath (Join-Path $repoRoot "tests/$ProjectName.Tests") -PathType Container) {
             New-Item -ItemType Directory -Path $testDir -Force | Out-Null

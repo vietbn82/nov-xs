@@ -78,14 +78,17 @@ foreach ($tpl in @('AtomicJsonStore.cs.template', 'ResilientAiPipeline.cs.templa
     [System.IO.File]::WriteAllText((Join-Path $infraDir $dstName), $content, $utf8NoBom)
 }
 
-# 5. Copy Web Tokens & Component templates
+# 5. Copy Studio-Grade Web Tokens, Top-Layer, Health Probe & Open-Code Component Kit
 [System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/tokens-template.css'), (Join-Path $cssDir 'tokens.css'), $true)
 [System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/styles-template.css'), (Join-Path $cssDir 'styles.css'), $true)
 [System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/top-layer.js'), (Join-Path $jsDir 'top-layer.js'), $true)
-[System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/app-header.js'), (Join-Path $compDir 'app-header.js'), $true)
-[System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/app-dialog.js'), (Join-Path $compDir 'app-dialog.js'), $true)
+[System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/ui-health-probe.js'), (Join-Path $jsDir 'ui-health-probe.js'), $true)
 
-# 6. Create index.html & app.js
+foreach ($webComp in @('app-header.js', 'app-dialog.js', 'app-drawer.js', 'app-toast.js', 'app-cmd-palette.js')) {
+    [System.IO.File]::Copy((Join-Path $repoRoot ".specify/templates/web/$webComp"), (Join-Path $compDir $webComp), $true)
+}
+
+# 6. Create thin App Shell index.html (<= 35 lines; all feature UI lives in isolated <slice-*> Web Components)
 $indexHtml = @"
 <!DOCTYPE html>
 <html lang="en">
@@ -95,59 +98,26 @@ $indexHtml = @"
   <title>$ProjectName</title>
   <link rel="stylesheet" href="/css/styles.css" />
   <script type="module" src="/js/top-layer.js"></script>
+  <script type="module" src="/js/ui-health-probe.js"></script>
   <script type="module" src="/components/app-header.js"></script>
   <script type="module" src="/components/app-dialog.js"></script>
-  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/components/app-drawer.js"></script>
+  <script type="module" src="/components/app-toast.js"></script>
+  <script type="module" src="/components/app-cmd-palette.js"></script>
 </head>
 <body>
   <app-header brand="$ProjectName" active="home"></app-header>
-
   <main class="app-shell">
-    <section class="card" aria-labelledby="slice-heading">
-      <h1 id="slice-heading" class="card__title">$FirstSlice</h1>
-      <p class="card__subtitle">$Mission</p>
-      <form id="create-form" class="input-group">
-        <input id="item-title" class="input-field" type="text" placeholder="Enter title..." required aria-label="Item title" />
-        <button type="submit" class="btn">Add</button>
-      </form>
-      <ul id="items-list" aria-live="polite"></ul>
-    </section>
   </main>
+  <app-drawer drawer-id="app-inspector-drawer" title="System & AI Inspector">
+    <p class="card__subtitle">Press Ctrl+K anywhere to launch the Command Palette or run a live UI geometry audit.</p>
+  </app-drawer>
+  <app-cmd-palette></app-cmd-palette>
+  <app-toast></app-toast>
 </body>
 </html>
 "@
 [System.IO.File]::WriteAllText((Join-Path $appDir 'wwwroot/index.html'), $indexHtml, $utf8NoBom)
-
-$appJs = @"
-const API_BASE = '/api/$routeSlug';
-
-async function loadItems() {
-  const listEl = document.getElementById('items-list');
-  if (!listEl) return;
-  const res = await fetch(API_BASE);
-  if (!res.ok) return;
-  const items = await res.json();
-  listEl.innerHTML = items.map((i) => '<li><strong>' + i.title + '</strong></li>').join('');
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  loadItems();
-  const form = document.getElementById('create-form');
-  form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const input = document.getElementById('item-title');
-    if (!input || !input.value.trim()) return;
-    await fetch(API_BASE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: input.value.trim() })
-    });
-    input.value = '';
-    await loadItems();
-  });
-});
-"@
-[System.IO.File]::WriteAllText((Join-Path $jsDir 'app.js'), $appJs, $utf8NoBom)
 
 # 7. Create tests/<ProjectName>.Tests project
 $testProjDir = Join-Path $repoRoot "tests/$ProjectName.Tests"
@@ -179,28 +149,15 @@ $testCsproj = @"
 "@
 [System.IO.File]::WriteAllText((Join-Path $testProjDir "$ProjectName.Tests.csproj"), $testCsproj, $utf8NoBom)
 
-# 8. Generate First Vertical Slice & Spec via new-slice.ps1
-& (Join-Path $repoRoot '.agents/skills/lean-slice/scripts/new-slice.ps1') `
-    -SliceName $FirstSlice `
-    -Description "$FirstSlice MVP vertical slice" `
-    -ProjectName $ProjectName `
-    -TargetRoot $repoRoot | Out-Null
-
-# 9. Write Program.cs wiring Scalar, IChatClient fallback, and the First Slice
+# 8. Write base Program.cs before new-slice.ps1 auto-registers the FirstSlice
 $programCs = @"
 using Microsoft.Extensions.AI;
 using Scalar.AspNetCore;
-using $ProjectName.Features.$FirstSlice;
 using $ProjectName.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<IChatClient, DeterministicFallbackChatClient>();
-
-var dataFile = Path.Combine(builder.Environment.ContentRootPath, "Data", "$routeSlug.json");
-builder.Services.AddSingleton<IJsonStore<${FirstSlice}State>>(_ =>
-    new AtomicJsonStore<${FirstSlice}State>(dataFile, () => new ${FirstSlice}State([])));
-builder.Services.AddSingleton<${FirstSlice}Service>();
 
 var app = builder.Build();
 
@@ -208,12 +165,17 @@ app.MapScalarApiReference();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.Map${FirstSlice}Endpoints();
-
 app.Run();
 
 public partial class Program;
 "@
 [System.IO.File]::WriteAllText((Join-Path $appDir 'Program.cs'), $programCs, $utf8NoBom)
 
-Write-Output "Scaffolded $ProjectName with slice '$FirstSlice' at $repoRoot"
+# 9. Generate First Vertical Slice, Isolated Web Component & Spec via new-slice.ps1
+& (Join-Path $repoRoot '.agents/skills/lean-slice/scripts/new-slice.ps1') `
+    -SliceName $FirstSlice `
+    -Description $Mission `
+    -ProjectName $ProjectName `
+    -TargetRoot $repoRoot | Out-Null
+
+Write-Output "Scaffolded $ProjectName with isolated slice '<slice-$routeSlug>' at $repoRoot"
