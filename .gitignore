@@ -1,0 +1,31 @@
+## .NET Build & Test Artifacts
+**/bin/
+**/obj/
+[Bb]in/
+[Oo]bj/
+*.nupkg
+**/nupkg/
+TestResults/
+
+## Local Persistence & Atomic Temp Files
+*.tmp
+*.db-wal
+*.db-shm
+
+## SpecKit Machine-Local State
+.specify/feature.json
+
+## Visual Studio / VS Code / IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## OS Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

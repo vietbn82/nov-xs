@@ -1,0 +1,17 @@
+{
+  "dod-test-reminder": {
+    "enabled": false,
+    "PostToolUse": [
+      {
+        "matcher": "edit_file|write_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dotnet test --no-restore --nologo",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
