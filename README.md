@@ -16,25 +16,24 @@ See [docs/UI_ANTI_BREAKAGE_SYSTEM.md](docs/UI_ANTI_BREAKAGE_SYSTEM.md) for full 
 
 ---
 
-## 🚀 1-Prompt Quickstart (Starting a New Personal Project)
+## 🚀 How to Use (Zero Friction)
 
-1. Copy or clone `Nov-XS` into your new project directory.
-2. Open your AI coding assistant and prompt:
-   > **"Initialize a new project called `<ProjectName>` for `<1-sentence idea>`. The primary outcome is `<goal>` and the first MVP slice is `<SliceName>`."**
-3. The agent automatically invokes [`vibe-init`](.agents/skills/vibe-init/SKILL.md) ([`scaffold-project.ps1`](.agents/skills/vibe-init/scripts/scaffold-project.ps1)) to:
-   - Lock your project's Anti-Drift rules in [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
-   - Scaffold `<ProjectName>.slnx`, a .NET 10 Minimal API Vertical Slice backend, `SqliteDatabase` (SQLite `WAL` Hybrid Document/Relational Store), `DeterministicFallbackChatClient`, and an isolated `<slice-*>` Web Component frontend.
-   - Generate `specs/001-<first-slice>/` (`spec.md`, `plan.md`, `tasks.md`) and run [`audit-dod.ps1`](.agents/skills/ui-dod-audit/scripts/audit-dod.ps1) (`dotnet test` + anti-monolith/isolation/token audit) to verify a 100% green baseline in seconds.
+### Option A: Pure AI Chat (0 Commands to Remember)
+Just open your AI assistant in this folder and type what you want in plain English:
+> **"Build me a habit tracker app"**
 
----
+The AI automatically infers the project name, scaffolds the `.NET 10` + SQLite `WAL` backend and `<slice-*>` UI, writes the tests, and verifies everything passes.
 
-## ⚡ One-Command Automation Scripts
+### Option B: 1-Word Terminal CLI (`./vibe.ps1`)
+If you prefer running commands yourself, use [`vibe.ps1`](vibe.ps1):
 
-| Task | Command |
+| What you want | Command |
 | :--- | :--- |
-| **Bootstrap Full Project** | `pwsh -NoProfile -File .agents/skills/vibe-init/scripts/scaffold-project.ps1 -ProjectName "PulseApp" -FirstSlice "Tasks" -Mission "Zero-friction task flow"` |
-| **Scaffold New Vertical Slice** | `pwsh -NoProfile -File .agents/skills/lean-slice/scripts/new-slice.ps1 -SliceName "Bookmarks" -Description "Save and tag links"` |
-| **Run 4-Point DoD & UI Audit** | `pwsh -NoProfile -File .agents/skills/ui-dod-audit/scripts/audit-dod.ps1` |
+| **Start app in this folder** | `./vibe.ps1 new MyApp` |
+| **Start app in a new `../MyApp` folder + fresh Git** | `./vibe.ps1 new MyApp -Out` |
+| **Add a new feature slice** | `./vibe.ps1 slice Bookmarks` |
+| **Run the web app** | `./vibe.ps1 run` |
+| **Run tests + UI health check** | `./vibe.ps1 check` |
 
 ---
 

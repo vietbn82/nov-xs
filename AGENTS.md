@@ -23,12 +23,14 @@
   - Use `GetResponseAsync<T>()` for structured JSON outputs, `TypedResults.ServerSentEvents(...)` for real-time streaming, and `TensorPrimitives.CosineSimilarity` for local vector search (< 50K items).
   - Always implement a **deterministic fallback** ([`.specify/templates/csharp/ResilientAiPipeline.cs.template`](.specify/templates/csharp/ResilientAiPipeline.cs.template)) so tests and offline dev work 100% reliably without external API keys.
 
-## 2. The 4-Stage Lean SpecKit Workflow
+## 2. Zero-Friction Vibe Workflow (`./vibe.ps1`)
 
-1. **Stage 1 — Spec & Contract**: Scaffold via `.agents/skills/lean-slice/scripts/new-slice.ps1` and lock `specs/###-<feature>/spec.md`.
-2. **Stage 2 — Tokens & Isolated Web Component**: Update `tokens.css` and customize `wwwroot/components/slice-<name>.js`.
-3. **Stage 3 — Red-Green-Refactor TDD**: Write failing `xUnit` + `FluentAssertions` tests first (`tests/<Project>.Tests/`), then implement the Vertical Slice.
-4. **Stage 4 — 4-Point Definition of Done (DoD) Gate**: Run `.agents/skills/ui-dod-audit/scripts/audit-dod.ps1` and `window.UiHealthProbe.runAudit()` across `375px`/`1440px` viewports.
+- **Zero-Interrogation Rule**: When the user asks to build an app or feature in plain English (e.g., *"build a habit tracker"*), **never** interrogate them for `ProjectName` or `FirstSlice`—auto-infer them and run [`./vibe.ps1`](vibe.ps1) immediately.
+- **4-Stage Execution via [`./vibe.ps1`](vibe.ps1)**:
+  1. **Bootstrap App**: `./vibe.ps1 new <AppName> [FirstSlice]` (or add `-Out` to create `../<AppName>` with a fresh Git repo).
+  2. **Add Feature Slice**: `./vibe.ps1 slice <SliceName>` (scaffolds `specs/###-<slice>/`, SQLite WAL slice, and `<slice-*>` Web Component).
+  3. **TDD Implementation**: Customize the C# Vertical Slice (`src/<App>/Features/<Slice>/`), isolated UI (`wwwroot/components/slice-<name>.js`), and `xUnit` tests.
+  4. **Verify Gate**: `./vibe.ps1 check` (`dotnet test` + UI/token/isolation check) and `./vibe.ps1 run`.
 
 ## 3. On-Demand Workspace Skills & References
 

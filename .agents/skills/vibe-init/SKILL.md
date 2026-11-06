@@ -10,23 +10,21 @@ description: >-
 
 Use this skill to transform the zero-bias `Nov-XS` rules template into a working, tested .NET 10 Vertical Slice + Native Web Components application tailored to the user's idea.
 
-## Step 1: Align on the 3 Core Inputs
+## Step 1: Auto-Infer Inputs (Zero-Interrogation Vibe Rule)
 
-If the user has not already provided them in their prompt, ask for:
-1. **ProjectName** (PascalCase, e.g., `PulseNotes`, `FocusForge`)
-2. **Mission** (Primary Outcome — what core problem it solves and for whom)
-3. **FirstSlice** (PascalCase name of the first MVP vertical slice, e.g., `Notes`, `Tasks`)
+Do **NOT** interrogate the user for parameters if they already gave you an idea (e.g., *"build me a habit tracker"*). Automatically infer:
+1. **ProjectName** (PascalCase, e.g., `HabitTracker`)
+2. **FirstSlice** (PascalCase plural noun, e.g., `Habits`)
+3. **Mission** (1-sentence outcome inferred from their prompt)
 
-## Step 2: Execute the 1-Command Project Scaffolder
+Only ask if the user literally said *"init"* with zero context about what they are building.
 
-Run the bundled [scaffold-project.ps1](./scripts/scaffold-project.ps1) helper script:
+## Step 2: Run the 1-Word Bootstrapper
 
 ```powershell
-pwsh -NoProfile -File .agents/skills/vibe-init/scripts/scaffold-project.ps1 `
-  -ProjectName "<ProjectName>" `
-  -FirstSlice "<FirstSlice>" `
-  -Mission "<Mission>"
+pwsh -NoProfile -File ./vibe.ps1 new "<ProjectName>" "<FirstSlice>"
 ```
+*(Or add `-Out` to create a brand-new sibling directory `../<ProjectName>` with a fresh Git repo without touching `Nov-xs`.)*
 
 This script automatically:
 - Updates [`.specify/memory/constitution.md`](../../../.specify/memory/constitution.md) with the project name and mission.

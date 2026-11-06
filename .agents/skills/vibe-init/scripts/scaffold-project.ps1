@@ -5,14 +5,33 @@ param(
     [Parameter(Mandatory = $true)][string]$ProjectName,
     [string]$FirstSlice = 'Workspace',
     [string]$Mission = 'Deliver focused user outcomes with zero architectural bloat.',
-    [string]$TargetRoot = ''
+    [string]$TargetRoot = '',
+    [switch]$InitGit
 )
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = if ($TargetRoot) {
-    (Resolve-Path -LiteralPath $TargetRoot).Path
+$templateRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../../../..')).Path
+if ($TargetRoot) {
+    if (-not (Test-Path -LiteralPath $TargetRoot -PathType Container)) {
+        New-Item -ItemType Directory -Path $TargetRoot -Force | Out-Null
+    }
+    $repoRoot = (Resolve-Path -LiteralPath $TargetRoot).Path
+    # Copy clean Nov-XS rules & templates if TargetRoot is a fresh directory
+    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot '.specify') -PathType Container)) {
+        foreach ($item in @('AGENTS.md', 'README.md', 'vibe.ps1', '.editorconfig', '.gitignore', '.agents', '.specify', 'docs')) {
+            $srcItem = Join-Path $templateRoot $item
+            if (Test-Path -LiteralPath $srcItem) {
+                Copy-Item -LiteralPath $srcItem -Destination $repoRoot -Recurse -Force
+            }
+        }
+    }
 } else {
-    (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../../../..')).Path
+    $repoRoot = $templateRoot
+}
+
+if ($InitGit -and -not (Test-Path -LiteralPath (Join-Path $repoRoot '.git') -PathType Container)) {
+    Push-Location $repoRoot
+    try { git init -b main | Out-Null } finally { Pop-Location }
 }
 
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
