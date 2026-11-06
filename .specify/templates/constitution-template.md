@@ -29,8 +29,8 @@
 - Route LLM calls through `IChatClient` with structured outputs (`GetResponseAsync<T>`) and SSE streaming (`TypedResults.ServerSentEvents`).
 - Always provide a local or deterministic fallback for offline/test resilience.
 
-### Principle IV: Zero-Ops Atomic Persistence
-- Use atomic temp-file swap (`File.Move(..., overwrite: true)`) for JSON stores or SQLite in `WAL` mode.
+### Principle IV: Zero-Ops SQLite WAL Hybrid Persistence
+- Use embedded SQLite in `WAL` mode (`ISqliteConnectionFactory` + zero-migration `SqliteSliceStore<T>`).
 
 ### Principle V: TDD & 4-Point Definition of Done (DoD)
 - Verify every vertical slice with `xUnit` + `FluentAssertions` (`dotnet test`), responsive viewports (`375px`–`1440px`), WCAG 2.2 AA accessibility, and zero browser console errors.

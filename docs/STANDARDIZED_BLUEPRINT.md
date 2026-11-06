@@ -34,15 +34,17 @@
   - **Zero-Reflection Serialization:** Use `System.Text.Json` Source Generators (`[JsonSerializable]`) for instant startup, reduced memory footprint, and Native AOT compatibility.
   - **Modern API Documentation:** Use Microsoft's native `Microsoft.AspNetCore.OpenApi` paired with **Scalar** (`Scalar.AspNetCore`) for fast, interactive OpenAPI v3.1 exploration.
 
-* **Zero-Ops Persistence:**
-  - **Micro Data (< 100K records):** **Thread-Safe JSON Document Store** with `System.Threading.Lock` / `SemaphoreSlim(1, 1)` and **Atomic Temp-File Swapping**. Write to `.tmp` first, then execute `File.Move(tempFile, targetFile, overwrite: true)` to guarantee zero file corruption on power loss or abrupt termination.
-  - **Medium Data (< 10M records):** **SQLite** configured in Write-Ahead Logging mode:
+* **Zero-Ops Persistence (SQLite WAL Hybrid Store):**
+  - **Why Not EF Core Migrations for Vibe Coding?** AI coding agents frequently break EF Core migration snapshots during rapid domain iteration. Conversely, flat JSON files lack ACID transactions, concurrent read/write safety, and SQL indexing.
+  - **The Optimal Architecture (`SqliteDatabase.cs.template`):** Embedded **SQLite (`Microsoft.Data.Sqlite`) in `WAL` mode** combining a zero-migration JSON document store (`SqliteSliceStore<T>`) with full relational SQL access (`ISqliteConnectionFactory`):
     ```sql
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = NORMAL;
     PRAGMA busy_timeout = 5000;
+    PRAGMA foreign_keys = ON;
     ```
-    Paired with **Dapper** or lightweight EF Core compiled models for maximum throughput without ORM overhead.
+  - **Zero-Migration Vertical Slices (`ISliceStore<T>`):** Each slice immediately gets ACID CRUD over `slice_items (slice, id, payload_json, updated_at_utc)`. Adding or renaming properties on a C# `record` requires **zero schema migrations**.
+  - **Relational & FTS5 Escape Hatch:** When a slice requires complex joins, `json_extract()` virtual indexes, or `FTS5` full-text search, inject `ISqliteConnectionFactory` directly without changing database engines.
 
 ---
 

@@ -34,6 +34,8 @@ class Slice__SLICE_NAME__ extends HTMLElement {
   bindEvents() {
     const form = this.querySelector('[data-role="form"]');
     const input = this.querySelector('[data-role="input"]');
+    const listEl = this.querySelector('[data-role="list"]');
+
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const title = input?.value?.trim();
@@ -45,7 +47,18 @@ class Slice__SLICE_NAME__ extends HTMLElement {
       });
       if (res.ok) {
         input.value = '';
-        window.AppToast?.show({ title: `Added to __SLICE_NAME__`, variant: 'success' });
+        window.AppToast?.show({ title: `Saved to __SLICE_NAME__`, variant: 'success' });
+        await this.loadItems();
+      }
+    });
+
+    listEl?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-delete-id]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-delete-id');
+      const res = await fetch(`${this.apiBase}/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        window.AppToast?.show({ title: 'Item removed', variant: 'info' });
         await this.loadItems();
       }
     });
@@ -68,7 +81,14 @@ class Slice__SLICE_NAME__ extends HTMLElement {
       }
 
       listEl.innerHTML = items
-        .map((item) => '<li class="item-row"><span>' + this.escapeHtml(item.title) + '</span><span class="badge">Active</span></li>')
+        .map(
+          (item) =>
+            '<li class="item-row"><span>' +
+            this.escapeHtml(item.title) +
+            '</span><button type="button" class="btn btn--ghost" data-delete-id="' +
+            this.escapeHtml(item.id) +
+            '" aria-label="Delete item">✕</button></li>'
+        )
         .join('');
     } catch {
       listEl.innerHTML = '<li class="empty-state">Offline or unable to load items.</li>';

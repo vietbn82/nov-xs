@@ -7,8 +7,9 @@
 **/nupkg/
 TestResults/
 
-## Local Persistence & Atomic Temp Files
+## Local Persistence & SQLite WAL Files
 *.tmp
+*.db
 *.db-wal
 *.db-shm
 

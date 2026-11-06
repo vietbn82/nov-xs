@@ -31,7 +31,7 @@ pwsh -NoProfile -File .agents/skills/vibe-init/scripts/scaffold-project.ps1 `
 This script automatically:
 - Updates [`.specify/memory/constitution.md`](../../../.specify/memory/constitution.md) with the project name and mission.
 - Creates `<ProjectName>.slnx`, `src/<ProjectName>/`, and `tests/<ProjectName>.Tests/`.
-- Copies `AtomicJsonStore.cs` and `ResilientAiPipeline.cs` (`DeterministicFallbackChatClient`) from [`.specify/templates/csharp/`](../../../.specify/templates/csharp/).
+- Copies `SqliteDatabase.cs` (`ISqliteConnectionFactory` + `SqliteSliceStore<T>`) and `ResilientAiPipeline.cs` (`DeterministicFallbackChatClient`) from [`.specify/templates/csharp/`](../../../.specify/templates/csharp/).
 - Copies `tokens.css`, `styles.css`, `top-layer.js`, `<app-header>`, and `<app-dialog>` from [`.specify/templates/web/`](../../../.specify/templates/web/).
 - Invokes `new-slice.ps1` to generate `specs/001-<first-slice>/` (`spec.md`, `plan.md`, `tasks.md`) and the complete `<FirstSlice>` vertical slice + `xUnit` tests.
 

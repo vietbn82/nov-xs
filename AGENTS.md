@@ -9,9 +9,9 @@
   - Each slice co-locates `<Slice>Models.cs` (`record` DTOs), `<Slice>Service.cs` (primary constructors, file-scoped namespaces), and `<Slice>Endpoints.cs` (`MapGroup` + `TypedResults`).
   - Use high-performance primitives (`ReadOnlySpan<char>`, `ValueTask<T>`, `System.Threading.Lock`) and `System.Text.Json` source generation where applicable.
   - Document APIs via `Scalar.AspNetCore`.
-- **Persistence (Zero-Ops Local-First)**:
-  - **Micro (< 100K items)**: Thread-safe JSON store using `System.Threading.Lock` + **atomic temp-file swap** (`File.Move(tmpPath, targetPath, overwrite: true)`). See [`.specify/templates/csharp/AtomicJsonStore.cs.template`](.specify/templates/csharp/AtomicJsonStore.cs.template).
-  - **Medium (< 10M items)**: SQLite in `WAL` mode (`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;`). See [`.specify/templates/csharp/SqliteWalFactory.cs.template`](.specify/templates/csharp/SqliteWalFactory.cs.template).
+- **Persistence (Zero-Ops SQLite WAL Hybrid Store)**:
+  - **Single Unified Engine**: Embedded **SQLite in `WAL` mode** (`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;`). See [`.specify/templates/csharp/SqliteDatabase.cs.template`](.specify/templates/csharp/SqliteDatabase.cs.template).
+  - **Zero-Migration Slice Store (`ISliceStore<T>`)**: Vertical slices default to `SqliteSliceStore<T>` backed by `slice_items(slice, id, payload_json, updated_at_utc)` so AI agents can add/evolve C# `record` properties with **zero EF Core migration breakage**, while retaining ACID transactions, `json_extract()` indexing, and raw relational/FTS5 SQL via `ISqliteConnectionFactory`.
 - **Frontend (5 Iron Laws of Unbreakable UI — [Full Spec](docs/UI_ANTI_BREAKAGE_SYSTEM.md))**:
   1. **Strict Slice Isolation**: `wwwroot/index.html` is a thin App Shell (`<= 150 lines`). Every feature slice MUST live in its own isolated Native Web Component (`wwwroot/components/slice-<name>.js`). Never use `document.getElementById()` inside a slice component—always use scoped `this.querySelector()`.
   2. **Anti-Monolith Ceiling**: No `.js` or `.css` file in `wwwroot/` may exceed `300 lines` (enforced by `audit-dod.ps1`).

@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Scaffolds a complete Lean SpecKit Vertical Slice (specs/###-<slice> + Features/<Slice> + Isolated <slice-*> Web Component + Program.cs wiring + xUnit Tests)
+# Scaffolds a complete Lean SpecKit Vertical Slice backed by SQLite WAL (specs/###-<slice> + Features/<Slice> + <slice-*> Web Component + Program.cs wiring + xUnit Tests)
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$SliceName,
@@ -62,8 +62,6 @@ namespace $ProjectName.Features.$SliceName;
 public sealed record ${SliceName}Item(string Id, string Title, string Notes, DateTimeOffset CreatedAtUtc);
 
 public sealed record Create${SliceName}Request(string Title, string? Notes = null);
-
-public sealed record ${SliceName}State(IReadOnlyList<${SliceName}Item> Items);
 "@
             [System.IO.File]::WriteAllText($modelsPath, $modelsCode, $utf8NoBom)
         }
@@ -75,11 +73,12 @@ using $ProjectName.Infrastructure;
 
 namespace $ProjectName.Features.$SliceName;
 
-public sealed class ${SliceName}Service(IJsonStore<${SliceName}State> store)
+public sealed class ${SliceName}Service(ISliceStore<${SliceName}Item> store)
 {
-    public IReadOnlyList<${SliceName}Item> GetAll() => store.Read().Items;
+    public Task<IReadOnlyList<${SliceName}Item>> GetAllAsync(CancellationToken ct = default) =>
+        store.GetAllAsync(ct);
 
-    public ${SliceName}Item Create(Create${SliceName}Request request)
+    public async Task<${SliceName}Item> CreateAsync(Create${SliceName}Request request, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Title);
 
@@ -89,9 +88,11 @@ public sealed class ${SliceName}Service(IJsonStore<${SliceName}State> store)
             Notes: request.Notes?.Trim() ?? string.Empty,
             CreatedAtUtc: DateTimeOffset.UtcNow);
 
-        store.Update(state => new ${SliceName}State([.. state.Items, item]));
-        return item;
+        return await store.UpsertAsync(item.Id, item, ct);
     }
+
+    public Task<bool> DeleteAsync(string id, CancellationToken ct = default) =>
+        store.DeleteAsync(id, ct);
 }
 "@
             [System.IO.File]::WriteAllText($servicePath, $serviceCode, $utf8NoBom)
@@ -110,12 +111,13 @@ public static class ${SliceName}Endpoints
     {
         var group = app.MapGroup("/api/$routeSlug").WithTags("$SliceName");
 
-        group.MapGet("/", (${SliceName}Service service) =>
-            TypedResults.Ok(service.GetAll()));
+        group.MapGet("/", async (${SliceName}Service service, CancellationToken ct) =>
+            TypedResults.Ok(await service.GetAllAsync(ct)));
 
-        group.MapPost("/", Results<Created<${SliceName}Item>, ValidationProblem> (
+        group.MapPost("/", async Task<Results<Created<${SliceName}Item>, ValidationProblem>> (
             Create${SliceName}Request request,
-            ${SliceName}Service service) =>
+            ${SliceName}Service service,
+            CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.Title))
             {
@@ -125,8 +127,17 @@ public static class ${SliceName}Endpoints
                 });
             }
 
-            var created = service.Create(request);
+            var created = await service.CreateAsync(request, ct);
             return TypedResults.Created("/api/$routeSlug/" + created.Id, created);
+        });
+
+        group.MapDelete("/{id}", async Task<Results<NoContent, NotFound>> (
+            string id,
+            ${SliceName}Service service,
+            CancellationToken ct) =>
+        {
+            var deleted = await service.DeleteAsync(id, ct);
+            return deleted ? TypedResults.NoContent() : TypedResults.NotFound();
         });
 
         return app;
@@ -147,7 +158,6 @@ public static class ${SliceName}Endpoints
                 [System.IO.File]::WriteAllText($compFile, $compJs, $utf8NoBom)
             }
 
-            # Mount <slice-*> tag and script import into index.html if not already present
             $indexPath = Join-Path $projectDir 'wwwroot/index.html'
             if (Test-Path -LiteralPath $indexPath -PathType Leaf) {
                 $indexRaw = [System.IO.File]::ReadAllText($indexPath, [System.Text.Encoding]::UTF8)
@@ -163,15 +173,15 @@ public static class ${SliceName}Endpoints
             }
         }
 
-        # 4. Auto-register slice in Program.cs if Program.cs exists and doesn't already wire it
+        # 4. Auto-register SQLite SliceStore & Service in Program.cs
         $programPath = Join-Path $projectDir 'Program.cs'
         if (Test-Path -LiteralPath $programPath -PathType Leaf) {
             $progRaw = [System.IO.File]::ReadAllText($programPath, [System.Text.Encoding]::UTF8)
             if ($progRaw -notmatch "Map${SliceName}Endpoints") {
                 $usingLine = "using $ProjectName.Features.$SliceName;`n"
                 $diBlock = @"
-builder.Services.AddSingleton<IJsonStore<${SliceName}State>>(_ =>
-    new AtomicJsonStore<${SliceName}State>(Path.Combine(builder.Environment.ContentRootPath, "Data", "$routeSlug.json"), () => new ${SliceName}State([])));
+builder.Services.AddSingleton<ISliceStore<${SliceName}Item>>(sp =>
+    new SqliteSliceStore<${SliceName}Item>(sp.GetRequiredService<ISqliteConnectionFactory>(), "$routeSlug"));
 builder.Services.AddSingleton<${SliceName}Service>();
 
 var app = builder.Build();
@@ -183,7 +193,7 @@ var app = builder.Build();
             }
         }
 
-        # 5. Scaffold xUnit + FluentAssertions Test Suite
+        # 5. Scaffold xUnit + FluentAssertions Test Suite (Testing SQLite WAL + Minimal API Endpoints)
         $testDir = Join-Path $repoRoot "tests/$ProjectName.Tests/Features"
         if (Test-Path -LiteralPath (Join-Path $repoRoot "tests/$ProjectName.Tests") -PathType Container) {
             New-Item -ItemType Directory -Path $testDir -Force | Out-Null
@@ -194,6 +204,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using $ProjectName.Features.$SliceName;
 using $ProjectName.Infrastructure;
 using Xunit;
@@ -202,25 +213,31 @@ namespace $ProjectName.Tests.Features;
 
 public sealed class ${SliceName}Tests : IDisposable
 {
-    private readonly string _tempFile = Path.Combine(Path.GetTempPath(), $"test-$routeSlug-{Guid.NewGuid():N}.json");
+    private readonly string _tempDb = Path.Combine(Path.GetTempPath(), $"test-$routeSlug-{Guid.NewGuid():N}.db");
 
     [Fact]
-    public void Service_CreateAndGetAll_PersistsAtomically()
+    public async Task Service_CreateGetAndDelete_PersistsInSqliteWal()
     {
-        var store = new AtomicJsonStore<${SliceName}State>(_tempFile, () => new ${SliceName}State([]));
+        var factory = new SqliteConnectionFactory(_tempDb);
+        var store = new SqliteSliceStore<${SliceName}Item>(factory, "$routeSlug");
         var service = new ${SliceName}Service(store);
 
-        var created = service.Create(new Create${SliceName}Request("First Slice Item", "Verified via TDD"));
+        var created = await service.CreateAsync(new Create${SliceName}Request("SQLite WAL Item", "Verified via TDD"));
 
         created.Id.Should().NotBeNullOrWhiteSpace();
-        service.GetAll().Should().ContainSingle(x => x.Title == "First Slice Item");
+        (await service.GetAllAsync()).Should().ContainSingle(x => x.Title == "SQLite WAL Item");
+
+        var deleted = await service.DeleteAsync(created.Id);
+        deleted.Should().BeTrue();
+        (await service.GetAllAsync()).Should().BeEmpty();
     }
 
     [Fact]
     public async Task Endpoint_PostEmptyTitle_ReturnsBadRequest()
     {
-        await using var factory = new WebApplicationFactory<Program>();
-        using var client = factory.CreateClient();
+        await using var appFactory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(b => b.UseSetting("DatabasePath", _tempDb));
+        using var client = appFactory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/$routeSlug", new Create${SliceName}Request("   "));
 
@@ -229,9 +246,11 @@ public sealed class ${SliceName}Tests : IDisposable
 
     public void Dispose()
     {
-        if (File.Exists(_tempFile))
+        SqliteConnection.ClearAllPools();
+        foreach (var suffix in new[] { "", "-wal", "-shm" })
         {
-            File.Delete(_tempFile);
+            var p = _tempDb + suffix;
+            if (File.Exists(p)) File.Delete(p);
         }
     }
 }

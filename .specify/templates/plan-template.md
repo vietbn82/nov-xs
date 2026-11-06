@@ -9,7 +9,7 @@
 - **Goal**: [1-sentence summary of the vertical slice outcome and technical approach]
 - **Backend Stack**: .NET 10 Minimal APIs, C# 13+, Vertical Slice (`Features/[SliceName]/`), `TypedResults`
 - **AI Stack (if applicable)**: `Microsoft.Extensions.AI` (`IChatClient`), Structured Output / SSE Streaming, Deterministic Fallback
-- **Persistence**: [Atomic JSON Document Store (`System.Threading.Lock` + temp-file swap) / SQLite `WAL`]
+- **Persistence**: Embedded SQLite `WAL` Hybrid Store (`ISqliteConnectionFactory` + `ISliceStore<T>`)
 - **Frontend Stack**: HTML5 Native Web Components (`customElements.define`), `tokens.css` (`@layer tokens`, `oklch()`, `clamp()`), native `<dialog>` & Popover API
 - **Verification**: `xUnit` + `FluentAssertions` + `WebApplicationFactory<Program>` + Chrome DevTools MCP
 

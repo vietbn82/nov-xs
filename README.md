@@ -23,7 +23,7 @@ See [docs/UI_ANTI_BREAKAGE_SYSTEM.md](docs/UI_ANTI_BREAKAGE_SYSTEM.md) for full 
    > **"Initialize a new project called `<ProjectName>` for `<1-sentence idea>`. The primary outcome is `<goal>` and the first MVP slice is `<SliceName>`."**
 3. The agent automatically invokes [`vibe-init`](.agents/skills/vibe-init/SKILL.md) ([`scaffold-project.ps1`](.agents/skills/vibe-init/scripts/scaffold-project.ps1)) to:
    - Lock your project's Anti-Drift rules in [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
-   - Scaffold `<ProjectName>.slnx`, a .NET 10 Minimal API Vertical Slice backend, `AtomicJsonStore`, `DeterministicFallbackChatClient`, and an isolated `<slice-*>` Web Component frontend.
+   - Scaffold `<ProjectName>.slnx`, a .NET 10 Minimal API Vertical Slice backend, `SqliteDatabase` (SQLite `WAL` Hybrid Document/Relational Store), `DeterministicFallbackChatClient`, and an isolated `<slice-*>` Web Component frontend.
    - Generate `specs/001-<first-slice>/` (`spec.md`, `plan.md`, `tasks.md`) and run [`audit-dod.ps1`](.agents/skills/ui-dod-audit/scripts/audit-dod.ps1) (`dotnet test` + anti-monolith/isolation/token audit) to verify a 100% green baseline in seconds.
 
 ---
@@ -56,13 +56,13 @@ Nov-xs/
 │   ├── memory/constitution.md             # Zero-bias Project Constitution & Anti-Drift Guardrail
 │   ├── scripts/powershell/                # De-bloated SpecKit & Hook PowerShell scripts
 │   └── templates/
-│       ├── csharp/                        # AtomicJsonStore, SqliteWalFactory, ResilientAiPipeline
+│       ├── csharp/                        # SqliteDatabase (WAL Hybrid Store), ResilientAiPipeline
 │       ├── web/                           # top-layer.js, ui-health-probe.js, slice-component.js.template, etc.
 │       ├── tokens-template.css            # Studio-grade OKLCH + fluid clamp() design tokens
 │       └── *.md                           # Lean Spec, Plan, Tasks, Checklist & Constitution templates
 └── docs/                                  # Reference Engineering Blueprints
     ├── UI_ANTI_BREAKAGE_SYSTEM.md         # 5 Iron Laws of Unbreakable & High-Craft UI
     ├── LEAN_SPECKIT.md                    # Design Tokens, Web Components & Top-Layer rules
-    ├── STANDARDIZED_BLUEPRINT.md          # .NET 10 Minimal APIs, Atomic I/O & SQLite WAL
+    ├── STANDARDIZED_BLUEPRINT.md          # .NET 10 Minimal APIs & SQLite WAL Hybrid Store
     └── AI_ENGINEERING_BLUEPRINT.md        # Microsoft.Extensions.AI, Structured Output, SSE & Vector SIMD
 ```

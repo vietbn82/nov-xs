@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# 1-Command Project Bootstrapper for Nov-XS Vibe Coding Scaffold
+# 1-Command Project Bootstrapper for Nov-XS Vibe Coding Scaffold (SQLite WAL Edition)
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$ProjectName,
@@ -58,9 +58,11 @@ $csprojContent = @"
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>NU1903</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0-*" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="9.3.0-preview.1.25161.3" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.0.18" />
   </ItemGroup>
@@ -69,9 +71,9 @@ $csprojContent = @"
 "@
 [System.IO.File]::WriteAllText((Join-Path $appDir "$ProjectName.csproj"), $csprojContent, $utf8NoBom)
 
-# 4. Copy C# Infrastructure templates
+# 4. Copy C# Infrastructure templates (SqliteDatabase + ResilientAiPipeline)
 $csharpTplDir = Join-Path $repoRoot '.specify/templates/csharp'
-foreach ($tpl in @('AtomicJsonStore.cs.template', 'ResilientAiPipeline.cs.template')) {
+foreach ($tpl in @('SqliteDatabase.cs.template', 'ResilientAiPipeline.cs.template')) {
     $srcTpl = Join-Path $csharpTplDir $tpl
     $dstName = $tpl.Replace('.template', '')
     $content = [System.IO.File]::ReadAllText($srcTpl, [System.Text.Encoding]::UTF8).Replace('__PROJECT_NAME__', $ProjectName)
@@ -131,6 +133,7 @@ $testCsproj = @"
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <NoWarn>NU1903</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -149,7 +152,7 @@ $testCsproj = @"
 "@
 [System.IO.File]::WriteAllText((Join-Path $testProjDir "$ProjectName.Tests.csproj"), $testCsproj, $utf8NoBom)
 
-# 8. Write base Program.cs before new-slice.ps1 auto-registers the FirstSlice
+# 8. Write base Program.cs wiring SQLite WAL Engine, Scalar, and IChatClient fallback
 $programCs = @"
 using Microsoft.Extensions.AI;
 using Scalar.AspNetCore;
@@ -157,6 +160,9 @@ using $ProjectName.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var dbPath = builder.Configuration["DatabasePath"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "Data", "app.db");
+builder.Services.AddSingleton<ISqliteConnectionFactory>(_ => new SqliteConnectionFactory(dbPath));
 builder.Services.AddSingleton<IChatClient, DeterministicFallbackChatClient>();
 
 var app = builder.Build();
@@ -178,4 +184,4 @@ public partial class Program;
     -ProjectName $ProjectName `
     -TargetRoot $repoRoot | Out-Null
 
-Write-Output "Scaffolded $ProjectName with isolated slice '<slice-$routeSlug>' at $repoRoot"
+Write-Output "Scaffolded $ProjectName (SQLite WAL) with isolated slice '<slice-$routeSlug>' at $repoRoot"

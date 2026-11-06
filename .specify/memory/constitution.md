@@ -30,9 +30,9 @@
 - Use strongly-typed **Structured Outputs** (`GetResponseAsync<T>`) for deterministic data extraction and `TypedResults.ServerSentEvents` (`text/event-stream`) for real-time generative UI streaming.
 - **Graceful Degradation**: Every AI feature must define a deterministic fallback (local model via Ollama/ONNX or rule-based heuristic) so the application remains 100% testable and resilient offline or during provider outages.
 
-### Principle IV: Zero-Ops Atomic Persistence
-- **Micro-Scale (< 100K records)**: Thread-safe JSON store protected by `System.Threading.Lock` / `SemaphoreSlim(1, 1)` using **atomic temp-file swap** (`File.Move(tmp, target, overwrite: true)`).
-- **Medium-Scale (< 10M records)**: SQLite in `WAL` mode (`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;`).
+### Principle IV: Zero-Ops SQLite WAL Hybrid Persistence
+- **Single Local-First Engine**: Use embedded **SQLite in `WAL` mode** (`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;`) via `ISqliteConnectionFactory`.
+- **Zero-Migration Slice Store**: Default vertical slices to `ISliceStore<T>` (`SqliteSliceStore<T>`) storing JSON documents in `slice_items(slice, id, payload_json, updated_at_utc)` to eliminate EF Core migration breakage during rapid AI iteration, dropping down to relational tables or `FTS5` via `ISqliteConnectionFactory` only when relational joins or full-text search are needed.
 
 ### Principle V: TDD & Definition of Done (DoD) Gate
 - Every vertical slice requires automated unit/integration tests (`xUnit` + `FluentAssertions` + `WebApplicationFactory<Program>`) verifying happy paths and validation boundaries.
