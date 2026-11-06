@@ -13,46 +13,32 @@ Use this skill to transform the zero-bias `Nov-XS` rules template into a working
 ## Step 1: Align on the 3 Core Inputs
 
 If the user has not already provided them in their prompt, ask for:
-1. **Project Name** (PascalCase, e.g., `PulseNotes`, `FocusForge`)
-2. **Primary Outcome (The One Thing)** — what core problem it solves and for whom
-3. **First MVP Vertical Slice** — the single highest-value feature to build first
+1. **ProjectName** (PascalCase, e.g., `PulseNotes`, `FocusForge`)
+2. **Mission** (Primary Outcome — what core problem it solves and for whom)
+3. **FirstSlice** (PascalCase name of the first MVP vertical slice, e.g., `Notes`, `Tasks`)
 
-## Step 2: Lock the Project Constitution
+## Step 2: Execute the 1-Command Project Scaffolder
 
-Update [`.specify/memory/constitution.md`](../../../.specify/memory/constitution.md) by replacing:
-- `[PROJECT_NAME]`
-- `[TARGET_USER_AND_PROBLEM]`
-- `[CORE_OUTCOME_METRIC]`
-- `[EXPLICIT_NON_GOALS]`
+Run the bundled [scaffold-project.ps1](./scripts/scaffold-project.ps1) helper script:
 
-## Step 3: Scaffold the Lean .NET 10 Solution
-
-Create the standardized directory structure:
-```text
-<ProjectName>.slnx
-src/<ProjectName>/
-├── <ProjectName>.csproj          # net10.0, Nullable=enable, ImplicitUsings=enable
-├── Program.cs                    # Minimal API + OpenAPI/Scalar + StaticFiles
-├── Infrastructure/
-│   └── AtomicJsonStore.cs        # Thread-safe System.Threading.Lock + temp-file swap
-├── Features/
-│   └── <FirstSlice>/             # Models, Service, Endpoints
-└── wwwroot/
-    ├── index.html
-    ├── css/
-    │   ├── tokens.css            # Copy from .specify/templates/tokens-template.css
-    │   └── styles.css
-    ├── components/
-    │   └── app-header.js         # Native Web Component (<app-header>)
-    └── js/
-        └── app.js
-tests/<ProjectName>.Tests/
-├── <ProjectName>.Tests.csproj    # xUnit + FluentAssertions + Microsoft.AspNetCore.Mvc.Testing
-└── Features/
-    └── <FirstSlice>Tests.cs
+```powershell
+pwsh -NoProfile -File .agents/skills/vibe-init/scripts/scaffold-project.ps1 `
+  -ProjectName "<ProjectName>" `
+  -FirstSlice "<FirstSlice>" `
+  -Mission "<Mission>"
 ```
 
-## Step 4: Initialize First Feature Spec & Verify
+This script automatically:
+- Updates [`.specify/memory/constitution.md`](../../../.specify/memory/constitution.md) with the project name and mission.
+- Creates `<ProjectName>.slnx`, `src/<ProjectName>/`, and `tests/<ProjectName>.Tests/`.
+- Copies `AtomicJsonStore.cs` and `ResilientAiPipeline.cs` (`DeterministicFallbackChatClient`) from [`.specify/templates/csharp/`](../../../.specify/templates/csharp/).
+- Copies `tokens.css`, `styles.css`, `top-layer.js`, `<app-header>`, and `<app-dialog>` from [`.specify/templates/web/`](../../../.specify/templates/web/).
+- Invokes `new-slice.ps1` to generate `specs/001-<first-slice>/` (`spec.md`, `plan.md`, `tasks.md`) and the complete `<FirstSlice>` vertical slice + `xUnit` tests.
 
-1. Run `.specify/scripts/powershell/create-new-feature.ps1 -ShortName "<first-slice>" "<First MVP Slice Description>"` to generate `specs/001-<first-slice>/spec.md`.
-2. Run `dotnet test` and confirm `0` errors and `0` warnings.
+## Step 3: Customize Domain Logic & Verify DoD Gate
+
+1. Tailor `specs/001-<first-slice>/spec.md` and `src/<ProjectName>/Features/<FirstSlice>/` to the user's specific domain fields.
+2. Run the automated DoD gate via [audit-dod.ps1](../ui-dod-audit/scripts/audit-dod.ps1):
+   ```powershell
+   pwsh -NoProfile -File .agents/skills/ui-dod-audit/scripts/audit-dod.ps1
+   ```

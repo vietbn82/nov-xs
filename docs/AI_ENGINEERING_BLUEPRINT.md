@@ -1,6 +1,6 @@
 # State-of-the-Art AI Engineering Blueprint (.NET 10 + Native Web)
 
-> **Philosophy:** *Provider-Agnostic Abstractions – Deterministic Structured Outputs – Real-Time SSE Streaming – 100% Offline/Test Resilience.*  
+> **Philosophy:** *Provider-Agnostic Abstractions – Deterministic Structured Outputs – Real-Time SSE Streaming – SIMD Local Vector Search – 100% Offline/Test Resilience.*  
 > Standardized blueprint for building production-grade AI capabilities inside small-to-medium .NET 10 applications without vendor lock-in or brittle prompt parsing.
 
 ---
@@ -23,8 +23,8 @@
         ┌──────────────────────────┼──────────────────────────┐
         ▼                          ▼                          ▼
 ┌───────────────┐          ┌───────────────┐          ┌───────────────┐
-│ Cloud Provider│          │ Local Runtime │          │ In-Memory     │
-│ (Gemini /     │          │ (Ollama /     │          │ Heuristic /   │
+│ Cloud Provider│          │ Local Runtime │          │ Deterministic │
+│ (Gemini /     │          │ (Ollama /     │          │ Fallback /    │
 │  OpenAI)      │          │  ONNX)        │          │ Test Fake     │
 └───────────────┘          └───────────────┘          └───────────────┘
 ```
@@ -38,10 +38,8 @@ Never couple domain services to a specific SDK or spawn external CLI processes f
 ```csharp
 using Microsoft.Extensions.AI;
 
-// Program.cs — Composable AI Pipeline Registration
 builder.Services.AddDistributedMemoryCache();
 
-// Register provider-agnostic IChatClient (Cloud, Ollama local, or Fallback)
 builder.Services.AddChatClient(sp =>
 {
     IChatClient innerClient = ResolveConfiguredProvider(builder.Configuration);
@@ -64,18 +62,14 @@ Prohibit fragile regex or substring extraction on raw LLM markdown. Always reque
 namespace MyApp.Features.Analysis;
 
 public sealed record AnalysisRequest(string Content, string Goal);
-
 public sealed record ActionItem(string Title, string Priority, int EstimatedMinutes);
-
 public sealed record AnalysisResult(
     string Summary,
     int ClarityScore,
     IReadOnlyList<ActionItem> NextActions,
     bool UsedFallback = false);
 
-public sealed class AnalysisService(
-    IChatClient chatClient,
-    ILogger<AnalysisService> logger)
+public sealed class AnalysisService(IChatClient chatClient, ILogger<AnalysisService> logger)
 {
     public async Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct = default)
     {
@@ -86,10 +80,7 @@ public sealed class AnalysisService(
                 Input: {request.Content}
                 """;
 
-            var response = await chatClient.GetResponseAsync<AnalysisResult>(
-                prompt,
-                cancellationToken: ct);
-
+            var response = await chatClient.GetResponseAsync<AnalysisResult>(prompt, cancellationToken: ct);
             if (response.Result is { } typedResult)
             {
                 return typedResult;
@@ -100,15 +91,12 @@ public sealed class AnalysisService(
             logger.LogWarning(ex, "Primary IChatClient failed; executing deterministic fallback.");
         }
 
-        return BuildDeterministicFallback(request);
-    }
-
-    private static AnalysisResult BuildDeterministicFallback(AnalysisRequest request) =>
-        new(
+        return new AnalysisResult(
             Summary: $"Offline summary for '{request.Goal}' ({request.Content.Length} chars).",
             ClarityScore: 80,
             NextActions: [new ActionItem("Review core requirements", "High", 15)],
             UsedFallback: true);
+    }
 }
 ```
 
@@ -116,9 +104,8 @@ public sealed class AnalysisService(
 
 ## 4. Core Pattern 3: Real-Time Generative Streaming (.NET 10 Native SSE)
 
-For long-form generation or interactive coaching/chat, stream tokens immediately using .NET 10's built-in `TypedResults.ServerSentEvents`:
+For long-form generation or interactive chat, stream tokens immediately using .NET 10's built-in `TypedResults.ServerSentEvents`:
 
-### Backend Minimal API Endpoint:
 ```csharp
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
@@ -150,32 +137,6 @@ static async IAsyncEnumerable<string> StreamTokensAsync(
 }
 ```
 
-### Frontend Native Consumption (`fetch` + `ReadableStream`):
-```javascript
-export async function streamAiResponse(prompt, onChunk) {
-  const response = await fetch('/api/ai/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt })
-  });
-
-  if (!response.ok || !response.body) {
-    throw new Error(`Stream failed: ${response.status}`);
-  }
-
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    for (const line of value.split('\n')) {
-      if (line.startsWith('data: ')) {
-        onChunk(line.slice(6));
-      }
-    }
-  }
-}
-```
-
 ---
 
 ## 5. Core Pattern 4: Tool Calling & Model Context Protocol (MCP)
@@ -199,8 +160,52 @@ var response = await chatClient.GetResponseAsync(userMessage, chatOptions, ct);
 
 ---
 
-## 6. AI Verification & Testing Checklist
+## 6. Core Pattern 5: Zero-Ops Local Vector Search (`TensorPrimitives.CosineSimilarity`)
 
-1. **Zero Live-Key Test Dependency:** Unit and integration tests (`dotnet test`) MUST pass with zero external API keys configured by injecting an in-memory `IChatClient` fake or verifying the deterministic fallback path.
-2. **Bounded Latency & Cancellation:** Always forward `CancellationToken ct` from Minimal API endpoints into `IChatClient` calls and configure a sensible timeout (`TimeSpan.FromSeconds(15)`).
-3. **Prompt Hygiene:** Keep system prompts concise, versioned inside the Vertical Slice service, and grounded in user-supplied context.
+For small-to-medium apps (`< 50,000` documents), do **not** deploy an external vector database (Pinecone, Qdrant, pgvector). Store `float[]` embeddings in your local JSON/SQLite store and rank in-memory using hardware-accelerated SIMD `TensorPrimitives.CosineSimilarity` (`System.Numerics.Tensors`):
+
+```csharp
+using System.Numerics.Tensors;
+using Microsoft.Extensions.AI;
+
+public sealed record EmbeddedRecord<T>(T Item, float[] Vector);
+
+public static IReadOnlyList<T> TopKSimilar<T>(
+    ReadOnlySpan<float> queryVector,
+    IEnumerable<EmbeddedRecord<T>> corpus,
+    int k = 5)
+{
+    var scored = new List<(T Item, float Score)>();
+    foreach (var entry in corpus)
+    {
+        float score = TensorPrimitives.CosineSimilarity(queryVector, entry.Vector);
+        scored.Add((entry.Item, score));
+    }
+
+    return scored
+        .OrderByDescending(x => x.Score)
+        .Take(k)
+        .Select(x => x.Item)
+        .ToList();
+}
+```
+
+---
+
+## 7. Core Pattern 6: Deterministic AI Unit Testing
+
+Use [`.specify/templates/csharp/ResilientAiPipeline.cs.template`](../.specify/templates/csharp/ResilientAiPipeline.cs.template) (`DeterministicFallbackChatClient`) or a canned `IChatClient` stub in `xUnit` so `dotnet test` runs in `< 100ms` with zero network calls or API keys:
+
+```csharp
+[Fact]
+public async Task AnalyzeAsync_WhenFallbackActive_ReturnsDeterministicResult()
+{
+    var chatClient = new DeterministicFallbackChatClient();
+    var service = new AnalysisService(chatClient, NullLogger<AnalysisService>.Instance);
+
+    var result = await service.AnalyzeAsync(new AnalysisRequest("Draft spec", "Ship MVP"));
+
+    result.Summary.Should().NotBeNullOrWhiteSpace();
+    result.ClarityScore.Should().BeInRange(0, 100);
+}
+```

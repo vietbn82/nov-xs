@@ -1,0 +1,42 @@
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.AI;
+
+namespace __PROJECT_NAME__.Infrastructure;
+
+/// <summary>
+/// Deterministic offline/test IChatClient fallback that guarantees 100% testability
+/// and offline resilience when no external LLM API key is configured.
+/// </summary>
+public sealed class DeterministicFallbackChatClient : IChatClient
+{
+    private readonly ChatClientMetadata _metadata = new("DeterministicFallback", new Uri("http://localhost"), "offline-v1");
+
+    public Task<ChatResponse> GetResponseAsync(
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var lastUserText = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text ?? string.Empty;
+        var reply = new ChatMessage(ChatRole.Assistant, $"[Fallback Response] Processed: {lastUserText.Trim()}");
+        return Task.FromResult(new ChatResponse([reply]) { ModelId = "offline-v1" });
+    }
+
+    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var response = await GetResponseAsync(messages, options, cancellationToken);
+        foreach (var word in (response.Text ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new ChatResponseUpdate(ChatRole.Assistant, $"{word} ");
+        }
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null) =>
+        serviceType == typeof(ChatClientMetadata) ? _metadata :
+        serviceType.IsInstanceOfType(this) ? this : null;
+
+    public void Dispose() { }
+}

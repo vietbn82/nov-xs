@@ -1,5 +1,15 @@
 {
-  "dod-test-reminder": {
+  "nov-xs-session-context": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "pwsh -NoProfile -File ../.specify/scripts/powershell/agent-hook-handler.ps1 -Event SessionStart",
+        "timeout": 10
+      }
+    ]
+  },
+  "nov-xs-post-edit": {
     "enabled": false,
     "PostToolUse": [
       {
@@ -7,8 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "dotnet test --no-restore --nologo",
-            "timeout": 30
+            "command": "pwsh -NoProfile -File ../.specify/scripts/powershell/agent-hook-handler.ps1 -Event PostToolUse",
+            "timeout": 15
           }
         ]
       }
