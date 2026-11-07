@@ -12,7 +12,7 @@ Follow these 4 stages in order whenever adding or modifying a feature.
 
 ## Stage 1: Scaffold Slice Spec & Skeleton
 
-Run [new-slice.ps1](./scripts/new-slice.ps1) to create `specs/###-<slice>/` (`spec.md`, `plan.md`, `tasks.md`) and, if `src/` exists, the initial Vertical Slice files (`Models`, `Service`, `Endpoints`, `Tests`):
+Run [new-slice.ps1](./scripts/new-slice.ps1) (or `./vibe.ps1 slice <SliceName>`) to create `specs/###-<slice>/` (`spec.md`, `plan.md`, `tasks.md`), the SQLite WAL Vertical Slice (`Models`, `Service`, `Endpoints`, `Tests`), and the isolated `wwwroot/components/slice-<slice>.js` Web Component:
 
 ```powershell
 pwsh -NoProfile -File .agents/skills/lean-slice/scripts/new-slice.ps1 `
@@ -26,19 +26,19 @@ Then refine `specs/###-<slice>/spec.md` with:
 - UI Layout Topology & **Mutual Exclusivity Matrix** (`<dialog>` vs `popover="auto"` via `window.TopLayer`).
 - Visual & Accessibility Contracts (VAC).
 
-## Stage 2: Design Tokens & Native Web Components
+## Stage 2: Design Tokens & Isolated `<slice-*>` Web Component
 
 1. Check `wwwroot/css/tokens.css`. Add any new semantic tokens inside `@layer tokens` using `oklch()` colors and `clamp()` typography.
-2. Apply the **Rule of Two**: if any UI element appears on $\ge 2$ views or encapsulates an overlay (`<dialog>` or `popover="auto"`), create or update a Native Web Component in `wwwroot/components/app-<name>.js`.
+2. Customize the slice's isolated Native Web Component in `wwwroot/components/slice-<slice>.js` using scoped `this.querySelector()` (never `document.getElementById()`), rendering all 4 states (Loading, Empty, Populated, Error).
 
 ## Stage 3: Red-Green-Refactor Vertical Slice TDD
 
 1. **Red**: Expand unit & API integration tests in `tests/<Project>.Tests/Features/<SliceName>Tests.cs` using `xUnit` and `FluentAssertions`.
 2. **Green**:
    - Update `<Slice>Models.cs` (immutable `record` DTOs).
-   - Update `<Slice>Service.cs` (primary constructor, atomic persistence, `IChatClient` + deterministic fallback if AI-powered).
-   - Update `<Slice>Endpoints.cs` (`MapGroup("/api/<slice>")` returning `TypedResults`) and register `app.Map<Slice>Endpoints()` in `Program.cs`.
-3. **Wire Frontend**: Connect `wwwroot/components/` and `wwwroot/js/app.js` to the endpoint.
+   - Update `<Slice>Service.cs` (primary constructor, `ISliceStore<T>` SQLite WAL persistence, `IChatClient` + deterministic fallback if AI-powered).
+   - Update `<Slice>Endpoints.cs` (`MapGroup("/api/<slice>")` returning `TypedResults`) and confirm `app.Map<Slice>Endpoints()` is wired in `Program.cs`.
+3. **Wire Frontend**: Connect `wwwroot/components/slice-<slice>.js` to `/api/<slice>` with `try/catch` error handling and `window.AppToast` feedback.
 
 ## Stage 4: Definition of Done (DoD) Gate
 

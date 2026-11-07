@@ -33,32 +33,54 @@ foreach ($file in $webFiles) {
 
     if ($file.Name -eq 'tokens.css') { continue }
 
+    $inBlockComment = $false
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
+        $trimmed = $line.Trim()
 
-        # Slice Isolation Check: forbid document.getElementById inside slice-* components
-        if ($file.Name -like 'slice-*.js' -and $line -match 'document\.(getElementById|querySelector)') {
+        if ($inBlockComment) {
+            if ($trimmed -match '\*/') { $inBlockComment = $false }
+            continue
+        }
+        if ($trimmed -match '^/\*' -and $trimmed -notmatch '\*/') {
+            $inBlockComment = $true
+            continue
+        }
+        if ($trimmed -match '^(//|/\*|\*|<!--)') { continue }
+
+        # Strip inline // comments before code checks
+        $codeLine = $line -replace '(?<!:)//.*$', ''
+
+        # Slice Isolation Check: forbid document.getElementById / document.querySelector inside slice-* components
+        if ($file.Name -like 'slice-*.js' -and $codeLine -match 'document\.(getElementById|querySelector)') {
             $violations.Add("Slice Isolation Violation in $($file.Name):$($i + 1) -> Use scoped this.querySelector() instead of global document queries.")
         }
 
-        if ($line -match '#[0-9a-fA-F]{3,8}\b' -and $line -notmatch '^\s*(//|/\*|\*)') {
-            $violations.Add("Token Violation (Hex Color) in $($file.Name):$($i + 1) -> $($line.Trim())")
+        # Hex Color Check: match CSS property values (after ':') or inline style attributes, avoiding #id selectors
+        $hasHex = if ($file.Extension -eq '.css') {
+            $codeLine -match ':\s*[^;]*#[0-9a-fA-F]{3,8}\b'
+        } else {
+            $codeLine -match '(style\s*=|color\s*:|background\s*:|fill\s*=|stroke\s*=)[^"'']*#[0-9a-fA-F]{3,8}\b'
         }
-        if ($line -match 'font-size\s*:\s*\d+(\.\d+)?px') {
-            $violations.Add("Token Violation (Pixel Font Size) in $($file.Name):$($i + 1) -> $($line.Trim())")
+        if ($hasHex) {
+            $violations.Add("Token Violation (Hex Color) in $($file.Name):$($i + 1) -> $trimmed")
         }
-        if ($line -match 'z-index\s*:\s*\d+' -and $line -notmatch 'var\(--z-') {
-            $violations.Add("Top-Layer Violation (Hardcoded z-index) in $($file.Name):$($i + 1) -> $($line.Trim())")
+
+        if ($codeLine -match 'font-size\s*:\s*\d+(\.\d+)?px') {
+            $violations.Add("Token Violation (Pixel Font Size) in $($file.Name):$($i + 1) -> $trimmed")
         }
-        if ($file.Extension -eq '.css' -and $line -match 'transition\s*:[^;]*max-height') {
+        if ($codeLine -match 'z-index\s*:\s*\d+' -and $codeLine -notmatch 'var\(--z-') {
+            $violations.Add("Top-Layer Violation (Hardcoded z-index) in $($file.Name):$($i + 1) -> $trimmed")
+        }
+        if ($file.Extension -eq '.css' -and $codeLine -match 'transition\s*:[^;]*max-height') {
             $violations.Add("Layout Jank Violation (max-height transition) in $($file.Name):$($i + 1) -> Use .collapsible grid-template-rows: 0fr/1fr instead.")
         }
     }
 }
 
-# 2. Scan for accidental secret / API key leaks
+# 2. Scan for accidental secret / API key leaks (cross-platform path filter)
 $codeFiles = Get-ChildItem -Path $repoRoot -Recurse -File -Include *.cs, *.json, *.js, *.html -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\(bin|obj|\.git)\\' }
+    Where-Object { $_.FullName -notmatch '[\\/](bin|obj|\.git)[\\/]' }
 
 foreach ($file in $codeFiles) {
     $raw = [System.IO.File]::ReadAllText($file.FullName)
@@ -67,11 +89,11 @@ foreach ($file in $codeFiles) {
     }
 }
 
-# 3. Run dotnet test if a solution exists and -SkipTests is not set
+# 3. Run dotnet test with -warnaserror if a solution exists and -SkipTests is not set
 $testsPassed = $true
 $slnFile = Get-ChildItem -LiteralPath $repoRoot -File -Filter *.sln* -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($slnFile -and -not $SkipTests) {
-    & dotnet test $slnFile.FullName --nologo --verbosity quiet
+    & dotnet test $slnFile.FullName --nologo --verbosity quiet -warnaserror
     if ($LASTEXITCODE -ne 0) {
         $testsPassed = $false
         $violations.Add("Automated Test Suite Failed: dotnet test returned exit code $LASTEXITCODE")
@@ -88,7 +110,7 @@ if ($Json) {
     } | ConvertTo-Json -Compress
 } else {
     if ($passed) {
-        Write-Output "✅ DoD Gate Audit PASSED (0 monolith/isolation/token/z-index/secret violations; tests green)."
+        Write-Output "✅ DoD Gate Audit PASSED (0 monolith/isolation/token/z-index/secret violations; tests green with 0 warnings)."
     } else {
         Write-Output "❌ DoD Gate Audit FAILED ($($violations.Count) violation(s)):"
         foreach ($v in $violations) {

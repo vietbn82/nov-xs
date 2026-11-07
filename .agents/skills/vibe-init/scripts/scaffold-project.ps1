@@ -10,13 +10,26 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+function ConvertTo-PascalIdentifier([string]$Raw, [string]$Fallback) {
+    $tokens = ($Raw -split '[^a-zA-Z0-9]+' | Where-Object { $_ })
+    if ($tokens.Count -eq 0) { return $Fallback }
+    $pascal = ($tokens | ForEach-Object {
+        if ($_.Length -eq 1) { $_.ToUpperInvariant() }
+        else { $_.Substring(0, 1).ToUpperInvariant() + $_.Substring(1) }
+    }) -join ''
+    if ($pascal -match '^[0-9]') { $pascal = "App$pascal" }
+    return $pascal
+}
+
+$ProjectName = ConvertTo-PascalIdentifier $ProjectName 'VibeApp'
+$FirstSlice = ConvertTo-PascalIdentifier $FirstSlice 'Workspace'
+
 $templateRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../../../..')).Path
 if ($TargetRoot) {
     if (-not (Test-Path -LiteralPath $TargetRoot -PathType Container)) {
         New-Item -ItemType Directory -Path $TargetRoot -Force | Out-Null
     }
     $repoRoot = (Resolve-Path -LiteralPath $TargetRoot).Path
-    # Copy clean Nov-XS rules & templates if TargetRoot is a fresh directory
     if (-not (Test-Path -LiteralPath (Join-Path $repoRoot '.specify') -PathType Container)) {
         foreach ($item in @('AGENTS.md', 'README.md', 'vibe.ps1', '.editorconfig', '.gitignore', '.agents', '.specify', 'docs')) {
             $srcItem = Join-Path $templateRoot $item
@@ -37,17 +50,20 @@ if ($InitGit -and -not (Test-Path -LiteralPath (Join-Path $repoRoot '.git') -Pat
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $routeSlug = ($FirstSlice -creplace '([a-z0-9])([A-Z])', '$1-$2').ToLowerInvariant()
 
-# 1. Update Constitution if placeholders exist
+# 1. Update Constitution placeholders
 $constitutionPath = Join-Path $repoRoot '.specify/memory/constitution.md'
 if (Test-Path -LiteralPath $constitutionPath -PathType Leaf) {
     $constRaw = [System.IO.File]::ReadAllText($constitutionPath, [System.Text.Encoding]::UTF8)
     $constRaw = $constRaw.Replace('[PROJECT_NAME]', $ProjectName).Replace('[CORE_OUTCOME_METRIC]', $Mission)
+    $constRaw = $constRaw.Replace('[TARGET_USER_AND_PROBLEM]', "Users of $ProjectName seeking: $Mission")
+    $constRaw = $constRaw.Replace('[EXPLICIT_NON_GOALS]', 'Unrequested CRUD bloat, multi-service microservices, or untested UI.')
     [System.IO.File]::WriteAllText($constitutionPath, $constRaw, $utf8NoBom)
 }
 
 # 2. Create .slnx file
 $slnxPath = Join-Path $repoRoot "$ProjectName.slnx"
-$slnxContent = @"
+if (-not (Test-Path -LiteralPath $slnxPath -PathType Leaf)) {
+    $slnxContent = @"
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/$ProjectName/$ProjectName.csproj" />
@@ -57,7 +73,8 @@ $slnxContent = @"
   </Folder>
 </Solution>
 "@
-[System.IO.File]::WriteAllText($slnxPath, $slnxContent, $utf8NoBom)
+    [System.IO.File]::WriteAllText($slnxPath, $slnxContent, $utf8NoBom)
+}
 
 # 3. Create src/<ProjectName> structure
 $appDir = Join-Path $repoRoot "src/$ProjectName"
@@ -70,47 +87,65 @@ foreach ($d in @($appDir, $infraDir, $cssDir, $compDir, $jsDir)) {
     New-Item -ItemType Directory -Path $d -Force | Out-Null
 }
 
-$csprojContent = @"
+$csprojPath = Join-Path $appDir "$ProjectName.csproj"
+if (-not (Test-Path -LiteralPath $csprojPath -PathType Leaf)) {
+    $csprojContent = @"
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <NoWarn>NU1903</NoWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0-*" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="9.3.0-preview.1.25161.3" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.0.18" />
   </ItemGroup>
 
 </Project>
 "@
-[System.IO.File]::WriteAllText((Join-Path $appDir "$ProjectName.csproj"), $csprojContent, $utf8NoBom)
+    [System.IO.File]::WriteAllText($csprojPath, $csprojContent, $utf8NoBom)
+}
 
 # 4. Copy C# Infrastructure templates (SqliteDatabase + ResilientAiPipeline)
 $csharpTplDir = Join-Path $repoRoot '.specify/templates/csharp'
 foreach ($tpl in @('SqliteDatabase.cs.template', 'ResilientAiPipeline.cs.template')) {
     $srcTpl = Join-Path $csharpTplDir $tpl
-    $dstName = $tpl.Replace('.template', '')
-    $content = [System.IO.File]::ReadAllText($srcTpl, [System.Text.Encoding]::UTF8).Replace('__PROJECT_NAME__', $ProjectName)
-    [System.IO.File]::WriteAllText((Join-Path $infraDir $dstName), $content, $utf8NoBom)
+    $dstPath = Join-Path $infraDir ($tpl.Replace('.template', ''))
+    if (-not (Test-Path -LiteralPath $dstPath -PathType Leaf)) {
+        $content = [System.IO.File]::ReadAllText($srcTpl, [System.Text.Encoding]::UTF8).Replace('__PROJECT_NAME__', $ProjectName)
+        [System.IO.File]::WriteAllText($dstPath, $content, $utf8NoBom)
+    }
 }
 
 # 5. Copy Studio-Grade Web Tokens, Top-Layer, Health Probe & Open-Code Component Kit
-[System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/tokens-template.css'), (Join-Path $cssDir 'tokens.css'), $true)
-[System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/styles-template.css'), (Join-Path $cssDir 'styles.css'), $true)
-[System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/top-layer.js'), (Join-Path $jsDir 'top-layer.js'), $true)
-[System.IO.File]::Copy((Join-Path $repoRoot '.specify/templates/web/ui-health-probe.js'), (Join-Path $jsDir 'ui-health-probe.js'), $true)
-
-foreach ($webComp in @('app-header.js', 'app-dialog.js', 'app-drawer.js', 'app-toast.js', 'app-cmd-palette.js')) {
-    [System.IO.File]::Copy((Join-Path $repoRoot ".specify/templates/web/$webComp"), (Join-Path $compDir $webComp), $true)
+foreach ($pair in @(
+    @{ Src = '.specify/templates/tokens-template.css'; Dst = (Join-Path $cssDir 'tokens.css') },
+    @{ Src = '.specify/templates/web/styles-template.css'; Dst = (Join-Path $cssDir 'styles.css') },
+    @{ Src = '.specify/templates/web/top-layer.js'; Dst = (Join-Path $jsDir 'top-layer.js') },
+    @{ Src = '.specify/templates/web/ui-health-probe.js'; Dst = (Join-Path $jsDir 'ui-health-probe.js') }
+)) {
+    if (-not (Test-Path -LiteralPath $pair.Dst -PathType Leaf)) {
+        [System.IO.File]::Copy((Join-Path $repoRoot $pair.Src), $pair.Dst, $true)
+    }
 }
 
-# 6. Create thin App Shell index.html (<= 35 lines; all feature UI lives in isolated <slice-*> Web Components)
-$indexHtml = @"
+foreach ($webComp in @('app-header.js', 'app-dialog.js', 'app-drawer.js', 'app-toast.js', 'app-cmd-palette.js')) {
+    $dstComp = Join-Path $compDir $webComp
+    if (-not (Test-Path -LiteralPath $dstComp -PathType Leaf)) {
+        [System.IO.File]::Copy((Join-Path $repoRoot ".specify/templates/web/$webComp"), $dstComp, $true)
+    }
+}
+
+# 6. Create thin App Shell index.html (idempotent: preserve existing index.html if present)
+$indexPath = Join-Path $appDir 'wwwroot/index.html'
+if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
+    $indexHtml = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -138,13 +173,16 @@ $indexHtml = @"
 </body>
 </html>
 "@
-[System.IO.File]::WriteAllText((Join-Path $appDir 'wwwroot/index.html'), $indexHtml, $utf8NoBom)
+    [System.IO.File]::WriteAllText($indexPath, $indexHtml, $utf8NoBom)
+}
 
 # 7. Create tests/<ProjectName>.Tests project
 $testProjDir = Join-Path $repoRoot "tests/$ProjectName.Tests"
 New-Item -ItemType Directory -Path $testProjDir -Force | Out-Null
 
-$testCsproj = @"
+$testCsprojPath = Join-Path $testProjDir "$ProjectName.Tests.csproj"
+if (-not (Test-Path -LiteralPath $testCsprojPath -PathType Leaf)) {
+    $testCsproj = @"
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -152,12 +190,12 @@ $testCsproj = @"
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <NoWarn>NU1903</NoWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="FluentAssertions" Version="6.12.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0-*" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
@@ -169,10 +207,13 @@ $testCsproj = @"
 
 </Project>
 "@
-[System.IO.File]::WriteAllText((Join-Path $testProjDir "$ProjectName.Tests.csproj"), $testCsproj, $utf8NoBom)
+    [System.IO.File]::WriteAllText($testCsprojPath, $testCsproj, $utf8NoBom)
+}
 
-# 8. Write base Program.cs wiring SQLite WAL Engine, Scalar, and IChatClient fallback
-$programCs = @"
+# 8. Write base Program.cs wiring SQLite WAL Engine, OpenAPI + Scalar, and IChatClient fallback (idempotent)
+$programPath = Join-Path $appDir 'Program.cs'
+if (-not (Test-Path -LiteralPath $programPath -PathType Leaf)) {
+    $programCs = @"
 using Microsoft.Extensions.AI;
 using Scalar.AspNetCore;
 using $ProjectName.Infrastructure;
@@ -181,11 +222,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 var dbPath = builder.Configuration["DatabasePath"]
     ?? Path.Combine(builder.Environment.ContentRootPath, "Data", "app.db");
+builder.Services.AddOpenApi();
 builder.Services.AddSingleton<ISqliteConnectionFactory>(_ => new SqliteConnectionFactory(dbPath));
 builder.Services.AddSingleton<IChatClient, DeterministicFallbackChatClient>();
 
 var app = builder.Build();
 
+app.MapOpenApi();
 app.MapScalarApiReference();
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -194,7 +237,8 @@ app.Run();
 
 public partial class Program;
 "@
-[System.IO.File]::WriteAllText((Join-Path $appDir 'Program.cs'), $programCs, $utf8NoBom)
+    [System.IO.File]::WriteAllText($programPath, $programCs, $utf8NoBom)
+}
 
 # 9. Generate First Vertical Slice, Isolated Web Component & Spec via new-slice.ps1
 & (Join-Path $repoRoot '.agents/skills/lean-slice/scripts/new-slice.ps1') `

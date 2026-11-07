@@ -1,8 +1,19 @@
 // Raycast / Linear-Style Command Palette (<app-cmd-palette>)
-// Global Ctrl+K / Cmd+K launcher with keyboard navigation and built-in UI Health Audit trigger.
+// Global Ctrl+K / Cmd+K launcher with keyboard navigation, lifecycle cleanup, and UI Health Audit trigger.
 
 class AppCmdPalette extends HTMLElement {
+  constructor() {
+    super();
+    this._onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        this.open();
+      }
+    };
+  }
+
   connectedCallback() {
+    window.addEventListener('keydown', this._onKeyDown);
     if (this.hasAttribute('rendered')) return;
     this.setAttribute('rendered', 'true');
 
@@ -30,7 +41,7 @@ class AppCmdPalette extends HTMLElement {
         id: 'open-inspector',
         label: 'Open AI & System Inspector Drawer',
         shortcut: 'Drawer',
-        run: () => window.TopLayer?.openModal('app-inspector-drawer')
+        run: (returnTrigger) => window.TopLayer?.openModal('app-inspector-drawer', returnTrigger)
       },
       {
         id: 'open-scalar',
@@ -44,23 +55,32 @@ class AppCmdPalette extends HTMLElement {
       <dialog id="app-cmd-dialog" class="cmd-dialog" aria-label="Command Palette">
         <div class="l-stack">
           <input data-role="search" class="input-field" type="search" placeholder="Type a command or search..." aria-label="Filter commands" autocomplete="off" />
-          <ul data-role="results" class="item-list" role="listbox"></ul>
+          <ul data-role="results" class="item-list" role="listbox" aria-label="Commands"></ul>
         </div>
       </dialog>
     `;
 
+    this.dialogEl = this.querySelector('#app-cmd-dialog');
     this.inputEl = this.querySelector('[data-role="search"]');
     this.listEl = this.querySelector('[data-role="results"]');
 
     this.inputEl?.addEventListener('input', () => this.renderList(this.inputEl.value));
+    this.addEventListener('keydown', (e) => this.handlePaletteKeys(e));
     this.renderList('');
+  }
 
-    window.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        this.open();
-      }
-    });
+  disconnectedCallback() {
+    window.removeEventListener('keydown', this._onKeyDown);
+  }
+
+  handlePaletteKeys(e) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const buttons = Array.from(this.listEl?.querySelectorAll('[data-cmd-id]') || []);
+    if (buttons.length === 0) return;
+    e.preventDefault();
+    const idx = buttons.indexOf(document.activeElement);
+    const nextIdx = e.key === 'ArrowDown' ? (idx + 1) % buttons.length : (idx - 1 + buttons.length) % buttons.length;
+    buttons[nextIdx]?.focus();
   }
 
   open(triggerEl = document.activeElement) {
@@ -78,15 +98,15 @@ class AppCmdPalette extends HTMLElement {
     const matches = this.commands.filter((c) => c.label.toLowerCase().includes(normalized));
 
     if (matches.length === 0) {
-      this.listEl.innerHTML = '<li class="empty-state">No matching commands.</li>';
+      this.listEl.innerHTML = '<li role="option" aria-disabled="true" class="empty-state">No matching commands.</li>';
       return;
     }
 
     this.listEl.innerHTML = matches
       .map(
         (cmd) => `
-        <li>
-          <button type="button" class="cmd-item" data-cmd-id="${cmd.id}">
+        <li role="none">
+          <button type="button" role="option" class="cmd-item" data-cmd-id="${cmd.id}">
             <span>${cmd.label}</span>
             <kbd class="kbd">${cmd.shortcut}</kbd>
           </button>
@@ -97,8 +117,9 @@ class AppCmdPalette extends HTMLElement {
     this.listEl.querySelectorAll('[data-cmd-id]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const cmd = this.commands.find((c) => c.id === btn.getAttribute('data-cmd-id'));
+        const originalTrigger = this.dialogEl?._returnFocusEl;
         window.TopLayer?.closeModal('app-cmd-dialog');
-        cmd?.run();
+        cmd?.run(originalTrigger);
       });
     });
   }

@@ -22,7 +22,7 @@ class Slice__SLICE_NAME__ extends HTMLElement {
         <p class="card__subtitle">__SLICE_DESCRIPTION__</p>
         <form data-role="form" class="input-group">
           <input data-role="input" class="input-field" type="text" placeholder="Add new __ROUTE_SLUG__ item..." required aria-label="New __SLICE_NAME__ title" />
-          <button type="submit" class="btn">Add</button>
+          <button type="submit" data-role="submit" class="btn">Add</button>
         </form>
         <ul data-role="list" class="item-list" aria-live="polite">
           <li class="skeleton" aria-hidden="true"></li>
@@ -34,32 +34,45 @@ class Slice__SLICE_NAME__ extends HTMLElement {
   bindEvents() {
     const form = this.querySelector('[data-role="form"]');
     const input = this.querySelector('[data-role="input"]');
+    const submitBtn = this.querySelector('[data-role="submit"]');
     const listEl = this.querySelector('[data-role="list"]');
 
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const title = input?.value?.trim();
       if (!title) return;
-      const res = await fetch(this.apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title })
-      });
-      if (res.ok) {
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const res = await fetch(this.apiBase, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         input.value = '';
-        window.AppToast?.show({ title: `Saved to __SLICE_NAME__`, variant: 'success' });
+        window.AppToast?.show({ title: 'Saved to __SLICE_NAME__', variant: 'success' });
         await this.loadItems();
+      } catch {
+        window.AppToast?.show({ title: 'Unable to save item.', variant: 'danger' });
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
 
     listEl?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-delete-id]');
-      if (!btn) return;
+      if (!btn || btn.disabled) return;
       const id = btn.getAttribute('data-delete-id');
-      const res = await fetch(`${this.apiBase}/${id}`, { method: 'DELETE' });
-      if (res.ok) {
+      if (!id) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${this.apiBase}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         window.AppToast?.show({ title: 'Item removed', variant: 'info' });
         await this.loadItems();
+      } catch {
+        btn.disabled = false;
+        window.AppToast?.show({ title: 'Unable to delete item.', variant: 'danger' });
       }
     });
   }
@@ -100,7 +113,8 @@ class Slice__SLICE_NAME__ extends HTMLElement {
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;');
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 }
 

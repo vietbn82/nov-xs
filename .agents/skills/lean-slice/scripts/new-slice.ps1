@@ -9,6 +9,22 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+function ConvertTo-PascalIdentifier([string]$Raw, [string]$Fallback) {
+    $tokens = ($Raw -split '[^a-zA-Z0-9]+' | Where-Object { $_ })
+    if ($tokens.Count -eq 0) { return $Fallback }
+    $pascal = ($tokens | ForEach-Object {
+        if ($_.Length -eq 1) { $_.ToUpperInvariant() }
+        else { $_.Substring(0, 1).ToUpperInvariant() + $_.Substring(1) }
+    }) -join ''
+    if ($pascal -match '^[0-9]') { $pascal = "Slice$pascal" }
+    return $pascal
+}
+
+$SliceName = ConvertTo-PascalIdentifier $SliceName 'Feature'
+if ($ProjectName) {
+    $ProjectName = ConvertTo-PascalIdentifier $ProjectName 'VibeApp'
+}
+
 $repoRoot = if ($TargetRoot) {
     (Resolve-Path -LiteralPath $TargetRoot).Path
 } else {
@@ -22,12 +38,22 @@ if ([string]::IsNullOrWhiteSpace($Description)) {
 $shortName = ($SliceName -creplace '([a-z0-9])([A-Z])', '$1-$2').ToLowerInvariant()
 $routeSlug = $shortName
 
-# 1. Generate Lean SpecKit artifacts (spec.md, plan.md, tasks.md)
-$env:SPECIFY_INIT_DIR = $repoRoot
-$specJson = & (Join-Path $repoRoot '.specify/scripts/powershell/create-new-feature.ps1') -Json -AllowExistingBranch -ShortName $shortName $Description | ConvertFrom-Json
-$env:SPECIFY_FEATURE_DIRECTORY = Split-Path -Parent $specJson.SPEC_FILE
-& (Join-Path $repoRoot '.specify/scripts/powershell/setup-plan.ps1') -Json | Out-Null
-& (Join-Path $repoRoot '.specify/scripts/powershell/setup-tasks.ps1') -Json | Out-Null
+# 1. Generate Lean SpecKit artifacts (spec.md, plan.md, tasks.md) without leaking env vars
+$prevInitDir = $env:SPECIFY_INIT_DIR
+$prevFeatDir = $env:SPECIFY_FEATURE_DIRECTORY
+$prevFeat = $env:SPECIFY_FEATURE
+try {
+    $env:SPECIFY_INIT_DIR = $repoRoot
+    $specJson = & (Join-Path $repoRoot '.specify/scripts/powershell/create-new-feature.ps1') -Json -AllowExistingBranch -ShortName $shortName $Description | ConvertFrom-Json
+    $featureDir = Split-Path -Parent $specJson.SPEC_FILE
+    $env:SPECIFY_FEATURE_DIRECTORY = $featureDir
+    & (Join-Path $repoRoot '.specify/scripts/powershell/setup-plan.ps1') -Json | Out-Null
+    & (Join-Path $repoRoot '.specify/scripts/powershell/setup-tasks.ps1') -Json | Out-Null
+} finally {
+    $env:SPECIFY_INIT_DIR = $prevInitDir
+    $env:SPECIFY_FEATURE_DIRECTORY = $prevFeatDir
+    $env:SPECIFY_FEATURE = $prevFeat
+}
 
 # 2. Auto-detect ProjectName if src/ exists
 $srcRoot = Join-Path $repoRoot 'src'
@@ -38,8 +64,8 @@ if ([string]::IsNullOrWhiteSpace($ProjectName) -and (Test-Path -LiteralPath $src
 
 if (-not [string]::IsNullOrWhiteSpace($ProjectName)) {
     foreach ($docFile in @(
-        (Join-Path $env:SPECIFY_FEATURE_DIRECTORY 'plan.md'),
-        (Join-Path $env:SPECIFY_FEATURE_DIRECTORY 'tasks.md')
+        (Join-Path $featureDir 'plan.md'),
+        (Join-Path $featureDir 'tasks.md')
     )) {
         if (Test-Path -LiteralPath $docFile -PathType Leaf) {
             $raw = [System.IO.File]::ReadAllText($docFile, [System.Text.Encoding]::UTF8)
@@ -83,7 +109,7 @@ public sealed class ${SliceName}Service(ISliceStore<${SliceName}Item> store)
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Title);
 
         var item = new ${SliceName}Item(
-            Id: Guid.NewGuid().ToString("N")[..8],
+            Id: Guid.CreateVersion7().ToString("N"),
             Title: request.Title.Trim(),
             Notes: request.Notes?.Trim() ?? string.Empty,
             CreatedAtUtc: DateTimeOffset.UtcNow);
@@ -153,8 +179,9 @@ public static class ${SliceName}Endpoints
         if ((Test-Path -LiteralPath $compDir -PathType Container) -and (Test-Path -LiteralPath $sliceTplPath -PathType Leaf)) {
             $compFile = Join-Path $compDir "slice-$routeSlug.js"
             if (-not (Test-Path -LiteralPath $compFile -PathType Leaf)) {
+                $safeDesc = $Description.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;').Replace("'", '&#39;').Replace('`', '').Replace('$', '')
                 $compJs = [System.IO.File]::ReadAllText($sliceTplPath, [System.Text.Encoding]::UTF8)
-                $compJs = $compJs.Replace('__SLICE_NAME__', $SliceName).Replace('__ROUTE_SLUG__', $routeSlug).Replace('__SLICE_DESCRIPTION__', $Description)
+                $compJs = $compJs.Replace('__SLICE_NAME__', $SliceName).Replace('__ROUTE_SLUG__', $routeSlug).Replace('__SLICE_DESCRIPTION__', $safeDesc)
                 [System.IO.File]::WriteAllText($compFile, $compJs, $utf8NoBom)
             }
 
@@ -193,7 +220,7 @@ var app = builder.Build();
             }
         }
 
-        # 5. Scaffold xUnit + FluentAssertions Test Suite (Testing SQLite WAL + Minimal API Endpoints)
+        # 5. Scaffold xUnit + FluentAssertions Test Suite (Testing SQLite WAL + Minimal API Endpoints + OpenAPI)
         $testDir = Join-Path $repoRoot "tests/$ProjectName.Tests/Features"
         if (Test-Path -LiteralPath (Join-Path $repoRoot "tests/$ProjectName.Tests") -PathType Container) {
             New-Item -ItemType Directory -Path $testDir -Force | Out-Null
@@ -205,6 +232,7 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.AI;
 using $ProjectName.Features.$SliceName;
 using $ProjectName.Infrastructure;
 using Xunit;
@@ -218,13 +246,13 @@ public sealed class ${SliceName}Tests : IDisposable
     [Fact]
     public async Task Service_CreateGetAndDelete_PersistsInSqliteWal()
     {
-        var factory = new SqliteConnectionFactory(_tempDb);
+        using var factory = new SqliteConnectionFactory(_tempDb);
         var store = new SqliteSliceStore<${SliceName}Item>(factory, "$routeSlug");
         var service = new ${SliceName}Service(store);
 
         var created = await service.CreateAsync(new Create${SliceName}Request("SQLite WAL Item", "Verified via TDD"));
 
-        created.Id.Should().NotBeNullOrWhiteSpace();
+        created.Id.Should().HaveLength(32);
         (await service.GetAllAsync()).Should().ContainSingle(x => x.Title == "SQLite WAL Item");
 
         var deleted = await service.DeleteAsync(created.Id);
@@ -233,15 +261,27 @@ public sealed class ${SliceName}Tests : IDisposable
     }
 
     [Fact]
-    public async Task Endpoint_PostEmptyTitle_ReturnsBadRequest()
+    public async Task Endpoint_ValidationAndOpenApi_WorkCorrectly()
     {
         await using var appFactory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(b => b.UseSetting("DatabasePath", _tempDb));
         using var client = appFactory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/api/$routeSlug", new Create${SliceName}Request("   "));
+        var badResponse = await client.PostAsJsonAsync("/api/$routeSlug", new Create${SliceName}Request("   "));
+        badResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var openApiResponse = await client.GetAsync("/openapi/v1.json");
+        openApiResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task FallbackChatClient_StructuredOutput_DeserializesCleanly()
+    {
+        using var chatClient = new DeterministicFallbackChatClient();
+        var response = await chatClient.GetResponseAsync<Create${SliceName}Request>("Test structured output");
+
+        response.Result.Should().NotBeNull();
+        response.Result.Title.Should().Contain("Fallback");
     }
 
     public void Dispose()

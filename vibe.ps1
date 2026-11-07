@@ -20,11 +20,22 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 
+function ConvertTo-PascalIdentifier([string]$Raw, [string]$Fallback) {
+    $tokens = ($Raw -split '[^a-zA-Z0-9]+' | Where-Object { $_ })
+    if ($tokens.Count -eq 0) { return $Fallback }
+    $pascal = ($tokens | ForEach-Object {
+        if ($_.Length -eq 1) { $_.ToUpperInvariant() }
+        else { $_.Substring(0, 1).ToUpperInvariant() + $_.Substring(1) }
+    }) -join ''
+    if ($pascal -match '^[0-9]') { $pascal = "App$pascal" }
+    return $pascal
+}
+
 switch ($Command) {
     'new' {
         if (-not $Name) { $Name = Read-Host "App Name (e.g. PulseNotes)" }
-        $cleanName = ($Name -replace '[^a-zA-Z0-9]', '')
-        $firstSlice = if ($SliceOrDesc) { $SliceOrDesc } else { 'Items' }
+        $cleanName = ConvertTo-PascalIdentifier $Name 'VibeApp'
+        $firstSlice = ConvertTo-PascalIdentifier $(if ($SliceOrDesc) { $SliceOrDesc } else { 'Items' }) 'Items'
         $target = if ($Out) { Join-Path (Split-Path $root -Parent) $cleanName } else { $root }
         & "$root/.agents/skills/vibe-init/scripts/scaffold-project.ps1" `
             -ProjectName $cleanName `
@@ -35,8 +46,9 @@ switch ($Command) {
     }
     'slice' {
         if (-not $Name) { $Name = Read-Host "Slice Name (e.g. Bookmarks)" }
-        $desc = if ($SliceOrDesc) { $SliceOrDesc } else { "$Name feature slice" }
-        & "$root/.agents/skills/lean-slice/scripts/new-slice.ps1" -SliceName $Name -Description $desc -TargetRoot $root
+        $cleanSlice = ConvertTo-PascalIdentifier $Name 'Items'
+        $desc = if ($SliceOrDesc) { $SliceOrDesc } else { "$cleanSlice feature slice" }
+        & "$root/.agents/skills/lean-slice/scripts/new-slice.ps1" -SliceName $cleanSlice -Description $desc -TargetRoot $root
     }
     'run' {
         $proj = Get-ChildItem -Path "$root/src" -Filter "*.csproj" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1

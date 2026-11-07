@@ -6,9 +6,10 @@ class AppDrawer extends HTMLElement {
     if (this.hasAttribute('rendered')) return;
     this.setAttribute('rendered', 'true');
 
-    const drawerId = this.getAttribute('drawer-id') || 'app-inspector-drawer';
-    const title = this.getAttribute('title') || 'Inspector';
-    const bodyContent = this.innerHTML;
+    const rawDrawerId = this.getAttribute('drawer-id') || 'app-inspector-drawer';
+    const drawerId = rawDrawerId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const title = this.escapeHtml(this.getAttribute('title') || 'Inspector');
+    const childNodes = Array.from(this.childNodes);
 
     this.innerHTML = `
       <dialog id="${drawerId}" class="app-drawer" aria-labelledby="${drawerId}-title">
@@ -18,14 +19,13 @@ class AppDrawer extends HTMLElement {
             ✕
           </button>
         </div>
-        <div class="l-stack app-drawer__body">
-          ${bodyContent}
-        </div>
+        <div class="l-stack app-drawer__body"></div>
       </dialog>
     `;
 
-    const dialog = this.querySelector(`#${drawerId}`);
-    this.querySelector(`[data-close-drawer="${drawerId}"]`)?.addEventListener('click', () => {
+    this.querySelector('.app-drawer__body')?.append(...childNodes);
+    const dialog = this.querySelector('dialog');
+    this.querySelector('[data-close-drawer]')?.addEventListener('click', () => {
       window.TopLayer?.closeModal(drawerId);
     });
 
@@ -35,6 +35,15 @@ class AppDrawer extends HTMLElement {
         window.TopLayer?.closeModal(drawerId);
       }
     });
+  }
+
+  escapeHtml(str) {
+    return String(str)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 }
 

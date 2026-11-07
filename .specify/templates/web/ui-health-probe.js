@@ -1,5 +1,5 @@
 // Runtime UI Geometry & Anti-Breakage Health Probe (Nov-XS)
-// Detects horizontal overflow, overlapping interactive controls, tiny touch targets, and overlay collisions.
+// Detects horizontal overflow, off-screen clipping, overlapping controls, <44px touch targets, and overlay collisions.
 
 export const UiHealthProbe = {
   runAudit() {
@@ -15,7 +15,7 @@ export const UiHealthProbe = {
       });
     }
 
-    // 2. Check visible interactive elements for <44px touch target & bounding-box collisions
+    // 2. Check visible interactive elements for off-screen bounds, <44px touch target & bounding-box collisions
     const controls = Array.from(
       document.querySelectorAll('button, a[href], input, select, textarea, [role="button"]')
     ).filter((el) => {
@@ -28,7 +28,14 @@ export const UiHealthProbe = {
 
     for (let i = 0; i < rects.length; i++) {
       const { el, rect } = rects[i];
-      if (rect.height < 40 || rect.width < 40) {
+      if (rect.right > winWidth + 1 || rect.left < -1) {
+        issues.push({
+          type: 'HORIZONTAL_OVERFLOW',
+          detail: `<${el.tagName.toLowerCase()}> extends outside horizontal viewport (${Math.round(rect.left)}px..${Math.round(rect.right)}px vs ${winWidth}px).`
+        });
+      }
+
+      if (rect.height < 44 || rect.width < 44) {
         issues.push({
           type: 'SMALL_TOUCH_TARGET',
           detail: `<${el.tagName.toLowerCase()}> (${Math.round(rect.width)}x${Math.round(rect.height)}px) is below 44px target.`

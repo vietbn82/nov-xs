@@ -3,14 +3,14 @@ using Microsoft.Data.Sqlite;
 
 namespace __PROJECT_NAME__.Infrastructure;
 
-public interface ISqliteConnectionFactory
+public interface ISqliteConnectionFactory : IDisposable
 {
     Task<SqliteConnection> OpenConnectionAsync(CancellationToken ct = default);
 }
 
 /// <summary>
-/// Zero-Ops SQLite WAL Engine. Automatically enables WAL concurrency pragmas and
-/// initializes the hybrid document/relational schema on first access with zero migrations.
+/// Zero-Ops SQLite WAL Engine. Configures busy_timeout and foreign_keys on every connection
+/// and initializes WAL mode + the hybrid document/relational schema once inside a thread-safe lock.
 /// </summary>
 public sealed class SqliteConnectionFactory : ISqliteConnectionFactory
 {
@@ -30,7 +30,9 @@ public sealed class SqliteConnectionFactory : ISqliteConnectionFactory
         {
             DataSource = databaseFilePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Pooling = true
+            Pooling = true,
+            DefaultTimeout = 5,
+            ForeignKeys = true
         }.ToString();
     }
 
@@ -42,9 +44,8 @@ public sealed class SqliteConnectionFactory : ISqliteConnectionFactory
         await using (var pragmaCmd = connection.CreateCommand())
         {
             pragmaCmd.CommandText = """
-                PRAGMA journal_mode = WAL;
-                PRAGMA synchronous = NORMAL;
                 PRAGMA busy_timeout = 5000;
+                PRAGMA synchronous = NORMAL;
                 PRAGMA foreign_keys = ON;
                 """;
             await pragmaCmd.ExecuteNonQueryAsync(ct);
@@ -59,6 +60,7 @@ public sealed class SqliteConnectionFactory : ISqliteConnectionFactory
                 {
                     await using var schemaCmd = connection.CreateCommand();
                     schemaCmd.CommandText = """
+                        PRAGMA journal_mode = WAL;
                         CREATE TABLE IF NOT EXISTS slice_items (
                             slice TEXT NOT NULL,
                             id TEXT NOT NULL,
@@ -81,6 +83,8 @@ public sealed class SqliteConnectionFactory : ISqliteConnectionFactory
 
         return connection;
     }
+
+    public void Dispose() => _initLock.Dispose();
 }
 
 public interface ISliceStore<T> where T : class

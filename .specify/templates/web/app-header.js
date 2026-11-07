@@ -3,7 +3,7 @@ class AppHeader extends HTMLElement {
     if (this.hasAttribute('rendered')) return;
     this.setAttribute('rendered', 'true');
 
-    const brand = this.getAttribute('brand') || 'App';
+    const brand = this.escapeHtml(this.getAttribute('brand') || 'App');
     const active = this.getAttribute('active') || 'home';
 
     this.innerHTML = `
@@ -38,6 +38,15 @@ class AppHeader extends HTMLElement {
     this.querySelector('[data-action="open-drawer"]')?.addEventListener('click', (e) => {
       window.TopLayer?.openModal('app-inspector-drawer', e.currentTarget);
     });
+  }
+
+  escapeHtml(str) {
+    return String(str)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 }
 

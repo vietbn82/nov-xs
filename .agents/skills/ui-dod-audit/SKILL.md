@@ -32,6 +32,6 @@ When a browser or Chrome DevTools MCP is available:
 2. Execute `window.UiHealthProbe.runAudit()` in the browser console (from [ui-health-probe.js](../../../.specify/templates/web/ui-health-probe.js)) and confirm `passed: true`:
    - Zero horizontal overflow (`scrollWidth <= clientWidth`).
    - Zero overlapping interactive controls (`ELEMENT_OVERLAP` bounding-box check).
-   - All buttons/inputs meet minimum hit target bounds (`>= 40-44px`).
+   - All buttons/inputs meet minimum hit target bounds (`>= 44px`).
    - At most 1 `<dialog>` open at a time.
 3. Confirm the browser DevTools console emits **zero** uncaught errors and **zero** failed network requests (`4xx`/`5xx`).

@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Create a new Lean SpecKit feature slice directory and spec.md
+# Create or reuse a Lean SpecKit feature slice directory and spec.md
 [CmdletBinding()]
 param(
     [switch]$Json,
@@ -43,25 +43,39 @@ $branchSuffix = if (-not [string]::IsNullOrWhiteSpace($ShortName)) {
     ConvertTo-Slug ($words -join '-')
 }
 
-if ($Timestamp) {
-    $featureNum = (Get-Date).ToString('yyyyMMdd-HHmmss')
-} elseif (-not [string]::IsNullOrWhiteSpace($Number)) {
-    $featureNum = '{0:000}' -f [int]$Number
-} else {
-    $maxNum = 0
-    if (Test-Path -LiteralPath $specsDir -PathType Container) {
-        Get-ChildItem -LiteralPath $specsDir -Directory | ForEach-Object {
-            if ($_.Name -match '^(\d{3})-') {
-                $n = [int]$matches[1]
-                if ($n -gt $maxNum) { $maxNum = $n }
-            }
-        }
-    }
-    $featureNum = '{0:000}' -f ($maxNum + 1)
+# Reuse existing feature directory when -AllowExistingBranch is set (idempotent re-runs)
+$existingDir = $null
+if ($AllowExistingBranch -and (Test-Path -LiteralPath $specsDir -PathType Container)) {
+    $existingDir = Get-ChildItem -LiteralPath $specsDir -Directory |
+        Where-Object { $_.Name -match "^(\d{3}|[0-9]{8}-[0-9]{6})-$([regex]::Escape($branchSuffix))$" } |
+        Select-Object -First 1
 }
 
-$branchName = "$featureNum-$branchSuffix"
-$featureDir = Join-Path $specsDir $branchName
+if ($existingDir) {
+    $branchName = $existingDir.Name
+    $featureNum = ($branchName -split '-')[0]
+    $featureDir = $existingDir.FullName
+} else {
+    if ($Timestamp) {
+        $featureNum = (Get-Date).ToString('yyyyMMdd-HHmmss')
+    } elseif (-not [string]::IsNullOrWhiteSpace($Number)) {
+        $featureNum = '{0:000}' -f [int]$Number
+    } else {
+        $maxNum = 0
+        if (Test-Path -LiteralPath $specsDir -PathType Container) {
+            Get-ChildItem -LiteralPath $specsDir -Directory | ForEach-Object {
+                if ($_.Name -match '^(\d{3})-') {
+                    $n = [int]$matches[1]
+                    if ($n -gt $maxNum) { $maxNum = $n }
+                }
+            }
+        }
+        $featureNum = '{0:000}' -f ($maxNum + 1)
+    }
+    $branchName = "$featureNum-$branchSuffix"
+    $featureDir = Join-Path $specsDir $branchName
+}
+
 $specFile = Join-Path $featureDir 'spec.md'
 
 if (-not $DryRun) {

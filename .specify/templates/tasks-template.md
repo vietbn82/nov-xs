@@ -27,10 +27,10 @@ description: "Lean Vertical-Slice TDD & DoD Task List"
 
 ---
 
-## Phase 3: Native Web Components & Top-Layer UI
+## Phase 3: Isolated `<slice-*>` Web Component & Top-Layer UI
 
-- [ ] T007 [P] [US1] Build or update encapsulated Native Web Component (`customElements.define`) using `<dialog>` / `popover="auto"` in `src/[ProjectName]/wwwroot/components/app-[slice].js`
-- [ ] T008 [US1] Wire frontend API calls (`fetch` / `EventSource`) and enforce the Mutual Exclusivity Matrix in `src/[ProjectName]/wwwroot/js/app.js` and `src/[ProjectName]/wwwroot/index.html`
+- [ ] T007 [P] [US1] Build or update isolated Native Web Component (`customElements.define`) using scoped `this.querySelector()` in `src/[ProjectName]/wwwroot/components/slice-[slice].js`
+- [ ] T008 [US1] Wire frontend API calls (`fetch` / `EventSource` with `try/catch` + `AppToast`) in `src/[ProjectName]/wwwroot/components/slice-[slice].js` and register `<slice-[slice]>` in `src/[ProjectName]/wwwroot/index.html`
 
 ---
 

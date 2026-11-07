@@ -143,16 +143,17 @@ my-project/
 │       ├── Program.cs            # Minimal API Bootstrap (routes, OpenAPI, DI)
 │       ├── Features/             # Vertical Slices (Models + Service + Endpoints)
 │       │   └── [SliceName]/
-│       ├── Infrastructure/       # AtomicJsonStore / SqliteWal / ResilientChatClient
-│       ├── Data/                 # Local JSON stores or SQLite WAL database
+│       ├── Infrastructure/       # SqliteDatabase.cs & ResilientAiPipeline.cs
+│       ├── Data/                 # Local SQLite WAL database (app.db)
 │       └── wwwroot/              # Static frontend (Zero build pipeline)
-│           ├── index.html        # Entrypoint view
+│           ├── index.html        # Thin App Shell (<= 150 lines)
 │           ├── css/
 │           │   ├── tokens.css    # Single Source of Truth for Design Tokens
-│           │   └── styles.css    # Base structural styles
-│           ├── components/       # Native Web Components (<app-header>, etc.)
+│           │   └── styles.css    # Every Layout primitives & component styles
+│           ├── components/       # Isolated <slice-*> & <app-*> Web Components
 │           └── js/
-│               └── app.js        # Event listeners & API integrations
+│               ├── top-layer.js        # Modal/Popover exclusivity coordinator
+│               └── ui-health-probe.js  # Live bounding-box & overflow auditor
 └── tests/
     └── MyProject.Tests/          # xUnit + FluentAssertions test suite
 ```

@@ -40,11 +40,11 @@ src/[ProjectName]/
 │       ├── [Slice]Models.cs     # Request/Response records & validation
 │       ├── [Slice]Service.cs    # Core domain/AI logic + fallback
 │       └── [Slice]Endpoints.cs  # Minimal API route group (TypedResults / SSE)
-├── Infrastructure/          # Shared AtomicJsonStore / SqliteDb / AiClient
+├── Infrastructure/          # Shared SqliteDatabase.cs & ResilientAiPipeline.cs
 └── wwwroot/
     ├── css/tokens.css       # Design token additions (if any)
     └── components/
-        └── app-[slice].js   # Encapsulated Native Web Component
+        └── slice-[slice].js # Isolated Native Web Component (<slice-[slice]>)
 
 tests/[ProjectName].Tests/
 └── Features/

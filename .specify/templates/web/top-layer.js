@@ -1,9 +1,7 @@
 // Top-Layer Mutual Exclusivity Coordinator (Lean SpecKit Standard)
-// Guarantees modals (<dialog>) and popovers (popover="auto") never collide or trap focus improperly.
+// Guarantees modals (<dialog>) and popovers (popover="auto") never collide or race on focus return.
 
 export const TopLayer = {
-  _lastTrigger: null,
-
   dismissAllPopovers() {
     document.querySelectorAll('[popover]').forEach((el) => {
       try {
@@ -19,25 +17,36 @@ export const TopLayer = {
   openModal(dialogId, triggerEl = document.activeElement) {
     this.dismissAllPopovers();
 
+    let inheritedTrigger = triggerEl;
     document.querySelectorAll('dialog[open]').forEach((d) => {
-      if (d.id !== dialogId) d.close();
+      if (d.id !== dialogId) {
+        if ((!inheritedTrigger || d.contains(inheritedTrigger)) && d._returnFocusEl) {
+          inheritedTrigger = d._returnFocusEl;
+        }
+        d.close();
+      }
     });
 
     const dialog = document.getElementById(dialogId);
     if (!dialog || typeof dialog.showModal !== 'function') return;
 
-    this._lastTrigger = triggerEl;
+    dialog._returnFocusEl = inheritedTrigger;
     dialog.addEventListener(
       'close',
       () => {
-        if (this._lastTrigger && typeof this._lastTrigger.focus === 'function') {
-          this._lastTrigger.focus();
+        // Do not steal focus if another modal dialog was opened immediately
+        if (document.querySelector('dialog[open]')) return;
+        const target = dialog._returnFocusEl;
+        if (target && typeof target.focus === 'function' && document.contains(target)) {
+          target.focus();
         }
       },
       { once: true }
     );
 
-    dialog.showModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
   },
 
   closeModal(dialogId) {

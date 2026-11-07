@@ -1,11 +1,13 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 
 namespace __PROJECT_NAME__.Infrastructure;
 
 /// <summary>
 /// Deterministic offline/test IChatClient fallback that guarantees 100% testability
-/// and offline resilience when no external LLM API key is configured.
+/// and offline resilience for plain text, streaming, and GetResponseAsync&lt;T&gt;() structured outputs.
 /// </summary>
 public sealed class DeterministicFallbackChatClient : IChatClient
 {
@@ -16,8 +18,14 @@ public sealed class DeterministicFallbackChatClient : IChatClient
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var lastUserText = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text ?? string.Empty;
-        var reply = new ChatMessage(ChatRole.Assistant, $"[Fallback Response] Processed: {lastUserText.Trim()}");
+        cancellationToken.ThrowIfCancellationRequested();
+        var lastUserText = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text?.Trim() ?? string.Empty;
+
+        var content = options?.ResponseFormat is ChatResponseFormatJson jsonFormat
+            ? BuildStructuredJson(jsonFormat.Schema, lastUserText)
+            : $"[Fallback Response] Processed: {lastUserText}";
+
+        var reply = new ChatMessage(ChatRole.Assistant, content);
         return Task.FromResult(new ChatResponse([reply]) { ModelId = "offline-v1" });
     }
 
@@ -39,4 +47,42 @@ public sealed class DeterministicFallbackChatClient : IChatClient
         serviceType.IsInstanceOfType(this) ? this : null;
 
     public void Dispose() { }
+
+    private static string BuildStructuredJson(JsonElement? schema, string prompt)
+    {
+        if (schema is not { ValueKind: JsonValueKind.Object } root ||
+            !root.TryGetProperty("properties", out var props) ||
+            props.ValueKind != JsonValueKind.Object)
+        {
+            return "{}";
+        }
+
+        var obj = new JsonObject();
+        foreach (var prop in props.EnumerateObject())
+        {
+            obj[prop.Name] = CreateDefaultNode(prop.Value, prompt);
+        }
+
+        return obj.ToJsonString();
+    }
+
+    private static JsonNode? CreateDefaultNode(JsonElement propSchema, string prompt)
+    {
+        var typeName = "string";
+        if (propSchema.ValueKind == JsonValueKind.Object && propSchema.TryGetProperty("type", out var t))
+        {
+            typeName = t.ValueKind == JsonValueKind.Array
+                ? t.EnumerateArray().FirstOrDefault(x => x.GetString() != "null").GetString() ?? "string"
+                : t.GetString() ?? "string";
+        }
+
+        return typeName switch
+        {
+            "integer" or "number" => JsonValue.Create(0),
+            "boolean" => JsonValue.Create(false),
+            "array" => new JsonArray(),
+            "object" => new JsonObject(),
+            _ => JsonValue.Create($"[Fallback] {prompt}")
+        };
+    }
 }
